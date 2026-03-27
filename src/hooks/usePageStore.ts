@@ -16,6 +16,23 @@ function saveCanvas(canvas: HTMLCanvasElement, key: string) {
   }
 }
 
+/** Save the full-screen desk canvas as JPEG (with desk background) to stay within quota. */
+function saveDeskCanvas(canvas: HTMLCanvasElement) {
+  try {
+    const tmp = document.createElement('canvas')
+    tmp.width = canvas.width
+    tmp.height = canvas.height
+    const ctx = tmp.getContext('2d')!
+    ctx.fillStyle = '#8b7355'
+    ctx.fillRect(0, 0, tmp.width, tmp.height)
+    ctx.drawImage(canvas, 0, 0)
+    const data = tmp.toDataURL('image/jpeg', 0.85)
+    localStorage.setItem(DESK_KEY, data)
+  } catch {
+    // Quota exceeded — ignore
+  }
+}
+
 function loadCanvasFromData(canvas: HTMLCanvasElement, data: string | null) {
   const ctx = canvas.getContext('2d')!
   ctx.clearRect(0, 0, canvas.width, canvas.height)
@@ -68,7 +85,7 @@ export function usePageStore() {
   )
 
   const saveDesk = useCallback((deskCanvas: HTMLCanvasElement | null) => {
-    if (deskCanvas) saveCanvas(deskCanvas, DESK_KEY)
+    if (deskCanvas) saveDeskCanvas(deskCanvas)
   }, [])
 
   const loadDesk = useCallback((deskCanvas: HTMLCanvasElement | null) => {
