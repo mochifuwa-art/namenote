@@ -67,10 +67,13 @@
   overflow-y: auto;
   touch-action: none;
   -webkit-overflow-scrolling: touch;
+  /* 右綴じ: 右から左へ表示 */
+  direction: rtl;
 }
 
 /* ── Insert zone ─────────────────────────────────────────────────── */
 .ov-insert {
+  direction: ltr;
   width: 22px;
   height: 130px;
   display: flex;
@@ -129,6 +132,7 @@
 
 /* ── Spread card ─────────────────────────────────────────────────── */
 .ov-card {
+  direction: ltr;
   width: 168px;
   background: rgba(255, 255, 255, 0.04);
   border: 1.5px solid rgba(255, 255, 255, 0.08);

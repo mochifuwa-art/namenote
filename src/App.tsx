@@ -155,7 +155,7 @@ export default function App() {
   const computeNotebookScale = useCallback(() => {
     const NOTEBOOK_W = window.innerWidth <= 700 ? 560 : 1128
     const NOTEBOOK_H = 800
-    const TOOLBAR_H = 56
+    const TOOLBAR_H = 64
     const MARGIN = 40
     const scaleW = (window.innerWidth - MARGIN) / NOTEBOOK_W
     const scaleH = (window.innerHeight - TOOLBAR_H - MARGIN) / NOTEBOOK_H

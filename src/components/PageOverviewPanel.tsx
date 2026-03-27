@@ -45,7 +45,8 @@ export default function PageOverviewPanel({
       const rect = el.getBoundingClientRect()
       if (clientY < rect.top) return i                              // above this card's row
       if (clientY <= rect.bottom) {
-        return clientX <= rect.left + rect.width / 2 ? i : i + 1  // within row
+        // RTL display: right of card center → insert before (zone i), left → after (zone i+1)
+        return clientX >= rect.left + rect.width / 2 ? i : i + 1
       }
     }
     return spreadCount

@@ -4,7 +4,7 @@
   bottom: 0;
   left: 0;
   right: 0;
-  height: 56px;
+  height: 64px;
   z-index: 101;
 
   display: flex;
@@ -59,6 +59,24 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+/* ── Labeled tool button ──────────────────────────────────────── */
+.tool-btn--labeled {
+  flex-direction: column;
+  gap: 1px;
+  height: auto;
+  min-height: 44px;
+  padding: 4px 8px;
+  font-size: 16px;  /* larger icon */
+}
+
+.tool-label {
+  font-size: 9px;
+  line-height: 1;
+  color: inherit;
+  opacity: 0.75;
+  letter-spacing: 0.02em;
+}
+
 .tool-btn:hover, .nav-btn:hover {
   background: rgba(255, 255, 255, 0.1);
   color: #fff;
@@ -93,7 +111,7 @@
 /* Color popup */
 .color-popup {
   position: fixed;
-  bottom: 64px;
+  bottom: 72px;
   background: rgba(28, 20, 13, 0.97);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 10px;
@@ -178,7 +196,7 @@
 /* ── Export menu ──────────────────────────────────────────────── */
 .export-menu {
   position: fixed;
-  bottom: 64px;
+  bottom: 72px;
   right: 12px;
   background: rgba(28, 20, 13, 0.97);
   border: 1px solid rgba(255, 255, 255, 0.12);

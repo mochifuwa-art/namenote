@@ -83,8 +83,12 @@ export default function Toolbar({
     >
       {/* Undo / Redo */}
       <div className="toolbar-group">
-        <button className="tool-btn" onClick={onUndo} disabled={!canUndo} title="元に戻す (Ctrl+Z)">↩</button>
-        <button className="tool-btn" onClick={onRedo} disabled={!canRedo} title="やり直す (Ctrl+Shift+Z)">↪</button>
+        <button className="tool-btn tool-btn--labeled" onClick={onUndo} disabled={!canUndo}>
+          ↩<span className="tool-label">戻す</span>
+        </button>
+        <button className="tool-btn tool-btn--labeled" onClick={onRedo} disabled={!canRedo}>
+          ↪<span className="tool-label">やり直</span>
+        </button>
       </div>
 
       <div className="toolbar-sep" />
@@ -92,25 +96,22 @@ export default function Toolbar({
       {/* Tool buttons */}
       <div className="toolbar-group">
         <button
-          className={`tool-btn ${tool.type === 'pen' ? 'active' : ''}`}
+          className={`tool-btn tool-btn--labeled ${tool.type === 'pen' ? 'active' : ''}`}
           onClick={() => setToolType('pen')}
-          title="ペン (P)"
         >
-          ✏️
+          ✏️<span className="tool-label">ペン</span>
         </button>
         <button
-          className={`tool-btn ${tool.type === 'eraser' ? 'active' : ''}`}
+          className={`tool-btn tool-btn--labeled ${tool.type === 'eraser' ? 'active' : ''}`}
           onClick={() => setToolType('eraser')}
-          title="消しゴム (E)"
         >
-          🧹
+          🧹<span className="tool-label">消しゴム</span>
         </button>
         <button
-          className={`tool-btn ${tool.type === 'lasso' ? 'active' : ''}`}
+          className={`tool-btn tool-btn--labeled ${tool.type === 'lasso' ? 'active' : ''}`}
           onClick={() => setToolType('lasso')}
-          title="なげなわ選択 (L)"
         >
-          🔲
+          🔲<span className="tool-label">選択</span>
         </button>
       </div>
 
@@ -186,7 +187,9 @@ export default function Toolbar({
         <span className="spread-label">{currentSpread + 1} / {totalSpreads}</span>
         <button className="nav-btn" onClick={onPrevSpread} disabled={currentSpread === 0} title="前のページ（右方向）">▶</button>
         <button className="nav-btn add-btn" onClick={onAddSpread} title="スプレッド追加">＋</button>
-        <button className="tool-btn" onClick={onOpenOverview} title="ページ一覧">☰</button>
+        <button className="tool-btn tool-btn--labeled" onClick={onOpenOverview}>
+          ☰<span className="tool-label">一覧</span>
+        </button>
       </div>
 
       <div className="toolbar-sep" />
@@ -203,9 +206,9 @@ export default function Toolbar({
         <button
           className="tool-btn"
           onClick={() => { setShowExportMenu(v => !v); setShowColorPicker(false) }}
-          title="書き出し"
+          title="ファイル"
         >
-          書き出し ▲
+          ファイル ▲
         </button>
         {showExportMenu && (
           <div className="export-menu">
