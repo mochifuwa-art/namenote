@@ -48,6 +48,7 @@ interface UseSelectionOptions {
   enabled: boolean
   onBeforeEdit?: (target: DrawTarget) => void
   onSelectionChange: (hasSelection: boolean) => void
+  onPasteChange?: (isPasting: boolean) => void
 }
 
 type Phase = 'idle' | 'drawing-lasso' | 'selected' | 'moving' | 'pasting'
@@ -62,6 +63,7 @@ export function useSelection({
   enabled,
   onBeforeEdit,
   onSelectionChange,
+  onPasteChange,
 }: UseSelectionOptions) {
   const phaseRef = useRef<Phase>('idle')
   const lassoPointsRef = useRef<Point[]>([])
@@ -273,7 +275,8 @@ export function useSelection({
     selectionTargetRectRef.current = null
     stopMarchingAnts()
     onSelectionChange(false)
-  }, [stopMarchingAnts, onSelectionChange])
+    onPasteChange?.(false)
+  }, [stopMarchingAnts, onSelectionChange, onPasteChange])
 
   const cutSelection = useCallback(() => {
     if (phaseRef.current !== 'selected') return
@@ -388,8 +391,9 @@ export function useSelection({
     pasteScaleRef.current = 1
     pasteRotationRef.current = 0
     phaseRef.current = 'pasting'
+    onPasteChange?.(true)
     startMarchingAnts()
-  }, [startMarchingAnts, getTargetCanvas])
+  }, [startMarchingAnts, getTargetCanvas, onPasteChange])
 
   /** スケール・回転を適用してペーストをコミット */
   const commitPaste = useCallback(() => {
@@ -428,8 +432,9 @@ export function useSelection({
     pasteScaleRef.current = 1
     pasteRotationRef.current = 0
     phaseRef.current = 'pasting'
+    onPasteChange?.(true)
     startMarchingAnts()
-  }, [cutSelection, startMarchingAnts])
+  }, [cutSelection, startMarchingAnts, onPasteChange])
 
   // Pointer handlers
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
@@ -468,14 +473,14 @@ export function useSelection({
         }
       }
 
-      // ハンドル以外をタップ → 現在位置にコミット
+      // ハンドル以外: ドラッグで移動できるよう位置を更新（確定は確定ボタンで行う）
+      pasteTargetRef.current = target
+      pasteTargetRectRef.current = rect
       const coords = target.kind === 'desk'
         ? { x: e.clientX, y: e.clientY }
         : toCanvasCoords(e.clientX, e.clientY, rect, canvas)
       pasteCanvasCoordRef.current = coords
-      pasteTargetRef.current = target
-      pasteTargetRectRef.current = rect
-      commitPaste()
+      overlayDivRef.current?.setPointerCapture(e.pointerId)
       return
     }
 
@@ -501,7 +506,7 @@ export function useSelection({
     const coords = target.kind === 'desk' ? { x: e.clientX, y: e.clientY } : toCanvasCoords(e.clientX, e.clientY, rect, canvas)
     lassoPointsRef.current = [coords]
     overlayDivRef.current?.setPointerCapture(e.pointerId)
-  }, [enabled, getDrawTarget, getPasteHandles, clearSelection, commitPaste, overlayDivRef])
+  }, [enabled, getDrawTarget, getPasteHandles, clearSelection, overlayDivRef])
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     if (!enabled) return
@@ -611,6 +616,8 @@ export function useSelection({
     deleteSelection,
     startPaste,
     startMove,
+    commitPaste,
+    cancelPaste: clearSelection,
     hasClipboard: () => !!clipboardRef.current,
     isSelectionActive: () => phaseRef.current === 'selected' || phaseRef.current === 'moving',
     isPasting: () => phaseRef.current === 'pasting',

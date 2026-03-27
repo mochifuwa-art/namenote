@@ -22,6 +22,7 @@ export default function App() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved')
   const [selectionActive, setSelectionActive] = useState(false)
   const [hasClipboard, setHasClipboard] = useState(false)
+  const [isPasting, setIsPasting] = useState(false)
   const [showOverview, setShowOverview] = useState(false)
   // Separate state for spread count so mutations (insert/reorder) trigger re-renders
   const [totalSpreads, setTotalSpreads] = useState(() =>
@@ -96,6 +97,7 @@ export default function App() {
     onSelectionChange: active => {
       setSelectionActive(active)
     },
+    onPasteChange: setIsPasting,
   })
 
   // ── Initial load ─────────────────────────────────────────────────
@@ -388,6 +390,14 @@ export default function App() {
     markUnsaved()
   }
 
+  const handleConfirmPaste = () => {
+    selection.commitPaste()
+    markUnsaved()
+  }
+  const handleCancelPaste = () => {
+    selection.cancelPaste()
+  }
+
   const cursor = tool.type === 'eraser' ? 'cell' : tool.type === 'lasso' ? 'crosshair' : 'crosshair'
 
   return (
@@ -434,7 +444,42 @@ export default function App() {
         onPointerCancel={handlePointerUp}
       />
 
-      {/* Layer 5: Toolbar */}
+      {/* Layer 5: Paste confirm/cancel bar */}
+      {isPasting && (
+        <div style={{
+          position: 'fixed',
+          bottom: 'calc(72px + env(safe-area-inset-bottom, 0px))',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 102,
+          display: 'flex',
+          gap: '8px',
+          background: 'rgba(30,30,30,0.88)',
+          borderRadius: '10px',
+          padding: '8px 14px',
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
+        }}>
+          <button
+            onClick={handleConfirmPaste}
+            style={{
+              background: '#3b82f6', color: '#fff', border: 'none',
+              borderRadius: '6px', padding: '7px 20px', fontSize: '15px',
+              fontWeight: 'bold', cursor: 'pointer',
+            }}
+          >確定</button>
+          <button
+            onClick={handleCancelPaste}
+            style={{
+              background: 'rgba(255,255,255,0.15)', color: '#fff', border: 'none',
+              borderRadius: '6px', padding: '7px 20px', fontSize: '15px',
+              cursor: 'pointer',
+            }}
+          >キャンセル</button>
+        </div>
+      )}
+
+      {/* Layer 6: Toolbar */}
       <Toolbar
         tool={tool}
         onToolChange={t => { setTool(t); if (t.type !== 'lasso') selection.clearSelection() }}
