@@ -34,6 +34,7 @@ interface UseDrawingOptions {
   leftCanvasRef: React.RefObject<HTMLCanvasElement | null>
   rightCanvasRef: React.RefObject<HTMLCanvasElement | null>
   overlayRef: React.RefObject<HTMLDivElement | null>
+  onBeforeStroke?: (target: DrawTarget) => void
   onStrokeEnd: (target: DrawTarget) => void
   enabled: boolean  // false when lasso tool is active
 }
@@ -44,6 +45,7 @@ export function useDrawing({
   leftCanvasRef,
   rightCanvasRef,
   overlayRef,
+  onBeforeStroke,
   onStrokeEnd,
   enabled,
 }: UseDrawingOptions) {
@@ -90,6 +92,8 @@ export function useDrawing({
 
       if (!canvas || !rect) return
 
+      onBeforeStroke?.(target)
+
       const ctx = canvas.getContext('2d')!
       applyToolToCtx(ctx)
 
@@ -114,7 +118,7 @@ export function useDrawing({
 
       overlayRef.current?.setPointerCapture(e.pointerId)
     },
-    [enabled, tool, deskCanvasRef, leftCanvasRef, rightCanvasRef, overlayRef, applyToolToCtx]
+    [enabled, tool, deskCanvasRef, leftCanvasRef, rightCanvasRef, overlayRef, onBeforeStroke, applyToolToCtx]
   )
 
   const handlePointerMove = useCallback(

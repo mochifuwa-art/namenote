@@ -30,6 +30,10 @@ interface ToolbarProps {
   onPaste: () => void
   onDeleteSelection: () => void
   hasClipboard: boolean
+  canUndo: boolean
+  canRedo: boolean
+  onUndo: () => void
+  onRedo: () => void
 }
 
 export default function Toolbar({
@@ -52,6 +56,10 @@ export default function Toolbar({
   onPaste,
   onDeleteSelection,
   hasClipboard,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
 }: ToolbarProps) {
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [showColorPicker, setShowColorPicker] = useState(false)
@@ -69,6 +77,14 @@ export default function Toolbar({
       className="toolbar"
       onPointerDown={e => e.stopPropagation()}
     >
+      {/* Undo / Redo */}
+      <div className="toolbar-group">
+        <button className="tool-btn" onClick={onUndo} disabled={!canUndo} title="元に戻す (Ctrl+Z)">↩</button>
+        <button className="tool-btn" onClick={onRedo} disabled={!canRedo} title="やり直す (Ctrl+Shift+Z)">↪</button>
+      </div>
+
+      <div className="toolbar-sep" />
+
       {/* Tool buttons */}
       <div className="toolbar-group">
         <button

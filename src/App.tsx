@@ -3,6 +3,7 @@ import type { DrawingTool, SaveStatus } from './types'
 import { usePageStore } from './hooks/usePageStore'
 import { useDrawing } from './hooks/useDrawing'
 import { useSelection } from './hooks/useSelection'
+import { useHistory } from './hooks/useHistory'
 import { exportSpreadAsJpg, exportAllAsPdf } from './utils/export'
 import { saveProjectFile, loadProjectFile } from './utils/save'
 import DeskCanvas from './components/DeskCanvas'
@@ -39,6 +40,7 @@ export default function App() {
   }, [])
 
   const pageStore = usePageStore()
+  const history = useHistory(deskCanvasRef, leftCanvasRef, rightCanvasRef)
 
   // ── Auto-save logic ──────────────────────────────────────────────
   const markUnsaved = useCallback(() => {
@@ -67,6 +69,7 @@ export default function App() {
     leftCanvasRef,
     rightCanvasRef,
     overlayRef,
+    onBeforeStroke: history.push,
     onStrokeEnd: markUnsaved,
     enabled: tool.type !== 'lasso',
   })
@@ -79,6 +82,7 @@ export default function App() {
     rightCanvasRef,
     deskCanvasRef,
     enabled: tool.type === 'lasso',
+    onBeforeEdit: history.push,
     onSelectionChange: active => {
       setSelectionActive(active)
     },
@@ -92,8 +96,9 @@ export default function App() {
   // ── Page navigation ──────────────────────────────────────────────
   const goToSpread = useCallback((next: number) => {
     saveNow()
+    history.clearPageHistory()
     setCurrentSpread(next)
-  }, [saveNow])
+  }, [saveNow, history])
 
   // Load spread whenever currentSpread changes (fires on mount too, covering spread 0)
   useEffect(() => {
@@ -154,10 +159,12 @@ export default function App() {
       if (e.key === 'e' && !e.ctrlKey && !e.metaKey) setTool(t => ({ ...t, type: 'eraser' }))
       if (e.key === 'l' && !e.ctrlKey && !e.metaKey) setTool(t => ({ ...t, type: 'lasso' }))
       if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveNow() }
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === 'z') { e.preventDefault(); history.undo(); markUnsaved() }
+      if ((e.ctrlKey || e.metaKey) && (e.shiftKey && e.key === 'z' || e.key === 'y')) { e.preventDefault(); history.redo(); markUnsaved() }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [saveNow])
+  }, [saveNow, history, markUnsaved])
 
   // ── Pointer event dispatcher ─────────────────────────────────────
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
@@ -185,24 +192,26 @@ export default function App() {
   }, [tool.type, selection, drawing])
 
   // ── Export / Save ────────────────────────────────────────────────
-  const handleExportSpreadJpg = async () => {
+  const handleExportSpreadJpg = () => {
     saveNow()
     try {
       const rightPageNum = currentSpread * 2 + 1
-      const filename = await exportSpreadAsJpg(leftCanvasRef.current, rightCanvasRef.current, rightPageNum)
+      const filename = exportSpreadAsJpg(leftCanvasRef.current, rightCanvasRef.current, rightPageNum)
       showToast(`書き出しました：${filename}`)
     } catch (e) {
-      if ((e as Error).name !== 'AbortError') showToast('書き出しに失敗しました')
+      showToast('書き出しに失敗しました')
+      console.error(e)
     }
   }
 
-  const handleExportAllPdf = async () => {
+  const handleExportAllPdf = () => {
     saveNow()
     try {
-      const filename = await exportAllAsPdf(pageStore.getSpreadCount(), pageStore.getSpreadData)
+      const filename = exportAllAsPdf(pageStore.getSpreadCount(), pageStore.getSpreadData)
       showToast(`PDF を書き出しました：${filename}`)
     } catch (e) {
-      if ((e as Error).name !== 'AbortError') showToast('PDF の書き出しに失敗しました')
+      showToast('PDF の書き出しに失敗しました')
+      console.error(e)
     }
   }
 
@@ -326,6 +335,10 @@ export default function App() {
         onPaste={handlePaste}
         onDeleteSelection={handleDeleteSelection}
         hasClipboard={hasClipboard}
+        canUndo={history.canUndo}
+        canRedo={history.canRedo}
+        onUndo={() => { history.undo(); markUnsaved() }}
+        onRedo={() => { history.redo(); markUnsaved() }}
       />
 
       {/* Toast notification */}

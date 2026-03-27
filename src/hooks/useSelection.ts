@@ -28,6 +28,7 @@ interface UseSelectionOptions {
   rightCanvasRef: React.RefObject<HTMLCanvasElement | null>
   deskCanvasRef: React.RefObject<HTMLCanvasElement | null>
   enabled: boolean
+  onBeforeEdit?: (target: DrawTarget) => void
   onSelectionChange: (hasSelection: boolean) => void
 }
 
@@ -40,6 +41,7 @@ export function useSelection({
   rightCanvasRef,
   deskCanvasRef,
   enabled,
+  onBeforeEdit,
   onSelectionChange,
 }: UseSelectionOptions) {
   const phaseRef = useRef<Phase>('idle')
@@ -206,6 +208,7 @@ export function useSelection({
     }
 
     // Erase from source
+    onBeforeEdit?.(target)
     const sctx = srcCanvas.getContext('2d')!
     sctx.save()
     sctx.globalCompositeOperation = 'destination-out'
@@ -258,6 +261,7 @@ export function useSelection({
     const target = selectionTargetRef.current!
     const srcCanvas = getTargetCanvas(target)
     if (!srcCanvas || pts.length < 3) { clearSelection(); return }
+    onBeforeEdit?.(target)
     const sctx = srcCanvas.getContext('2d')!
     sctx.save()
     // Use destination-out to punch transparent holes (same as cut).
@@ -287,6 +291,7 @@ export function useSelection({
     if (!target) return
     const destCanvas = getTargetCanvas(target)
     if (!destCanvas) return
+    onBeforeEdit?.(target)
     const dctx = destCanvas.getContext('2d')!
     const cx = pasteCanvasCoordRef.current.x - cb.width / 2
     const cy = pasteCanvasCoordRef.current.y - cb.height / 2
