@@ -159,17 +159,9 @@ export default function PageOverviewPanel({
         {/* Drag handle (top-right corner) */}
         <div className="ov-drag-handle" title="ドラッグして並べ替え">⠿</div>
 
-        {/* Page thumbnails: right page first (右綴じ) */}
+        {/* Page thumbnails: left page on left, right page on right (matches open-book layout) */}
         <div className="ov-pages">
-          <div className="ov-page">
-            <div className="ov-thumb">
-              {rightThumb
-                ? <img src={rightThumb} alt="" draggable={false} />
-                : <div className="ov-thumb-blank" />
-              }
-            </div>
-            <span className="ov-page-num">p.{i * 2 + 1}</span>
-          </div>
+          {/* Left page (even) */}
           <div className="ov-page">
             <div className="ov-thumb">
               {leftThumb
@@ -178,6 +170,16 @@ export default function PageOverviewPanel({
               }
             </div>
             <span className="ov-page-num">p.{i * 2 + 2}</span>
+          </div>
+          {/* Right page (odd) */}
+          <div className="ov-page">
+            <div className="ov-thumb">
+              {rightThumb
+                ? <img src={rightThumb} alt="" draggable={false} />
+                : <div className="ov-thumb-blank" />
+              }
+            </div>
+            <span className="ov-page-num">p.{i * 2 + 1}</span>
           </div>
         </div>
 
