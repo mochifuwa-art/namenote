@@ -90,11 +90,13 @@ export function usePageStore() {
 
   const loadDesk = useCallback((deskCanvas: HTMLCanvasElement | null) => {
     if (!deskCanvas) return
+    const ctx = deskCanvas.getContext('2d')!
+    ctx.clearRect(0, 0, deskCanvas.width, deskCanvas.height)
     const data = localStorage.getItem(DESK_KEY)
     if (!data) return
     const img = new Image()
     img.onload = () => {
-      const ctx = deskCanvas.getContext('2d')!
+      ctx.clearRect(0, 0, deskCanvas.width, deskCanvas.height)
       ctx.drawImage(img, 0, 0)
     }
     img.src = data
@@ -164,6 +166,8 @@ export function usePageStore() {
       rightCanvas: HTMLCanvasElement | null,
       currentSpread: number
     ) => {
+      // If the project file has no desk data, clear the stale localStorage key
+      if (!projectData[DESK_KEY]) localStorage.removeItem(DESK_KEY)
       // Write all to localStorage
       Object.entries(projectData).forEach(([key, value]) => {
         localStorage.setItem(key, value)
@@ -179,6 +183,7 @@ export function usePageStore() {
 
   return {
     getSpreadCount,
+    setSpreadCount,
     saveSpread,
     loadSpread,
     saveDesk,

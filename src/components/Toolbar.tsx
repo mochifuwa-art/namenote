@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import type { DrawingTool, SaveStatus } from '../types'
 import { type ToolType } from '../types'
 import '../styles/Toolbar.css'
@@ -24,6 +25,7 @@ interface ToolbarProps {
   onExportAllPdf: () => void
   onSaveProjectFile: () => void
   onLoadProjectFile: (file: File) => void
+  onImportPdf: (file: File) => void
   selectionActive: boolean
   onCut: () => void
   onCopy: () => void
@@ -51,6 +53,7 @@ export default function Toolbar({
   onExportAllPdf,
   onSaveProjectFile,
   onLoadProjectFile,
+  onImportPdf,
   selectionActive,
   onCut,
   onCopy,
@@ -67,6 +70,7 @@ export default function Toolbar({
   const [showColorPicker, setShowColorPicker] = useState(false)
   const [colorPopupLeft, setColorPopupLeft] = useState(12)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const pdfInputRef = useRef<HTMLInputElement>(null)
   const colorGroupRef = useRef<HTMLDivElement>(null)
 
   const setToolType = (type: ToolType) => onToolChange({ ...tool, type })
@@ -130,25 +134,30 @@ export default function Toolbar({
           }}
           title="色"
         />
-        {showColorPicker && (
-          <div className="color-popup" style={{ left: colorPopupLeft }}>
-            <div className="color-grid">
-              {PRESET_COLORS.map(c => (
-                <button
-                  key={c}
-                  className="color-swatch"
-                  style={{ background: c, outline: c === tool.color ? '2px solid #60a5fa' : 'none' }}
-                  onClick={() => setColor(c)}
-                />
-              ))}
+        {/* Color picker portal — avoids backdrop-filter stacking context on iOS */}
+        {showColorPicker && createPortal(
+          <>
+            <div className="popup-backdrop" onClick={() => setShowColorPicker(false)} />
+            <div className="color-popup" style={{ left: colorPopupLeft }}>
+              <div className="color-grid">
+                {PRESET_COLORS.map(c => (
+                  <button
+                    key={c}
+                    className="color-swatch"
+                    style={{ background: c, outline: c === tool.color ? '2px solid #60a5fa' : 'none' }}
+                    onClick={() => setColor(c)}
+                  />
+                ))}
+              </div>
+              <input
+                type="color"
+                value={tool.color}
+                onChange={e => onToolChange({ ...tool, color: e.target.value, type: 'pen' })}
+                style={{ width: '100%', marginTop: 6, cursor: 'pointer' }}
+              />
             </div>
-            <input
-              type="color"
-              value={tool.color}
-              onChange={e => onToolChange({ ...tool, color: e.target.value, type: 'pen' })}
-              style={{ width: '100%', marginTop: 6, cursor: 'pointer' }}
-            />
-          </div>
+          </>,
+          document.body
         )}
       </div>
 
@@ -201,8 +210,8 @@ export default function Toolbar({
         </button>
       </div>
 
-      {/* Export */}
-      <div className="toolbar-group" style={{ position: 'relative' }}>
+      {/* File menu */}
+      <div className="toolbar-group">
         <button
           className="tool-btn"
           onClick={() => { setShowExportMenu(v => !v); setShowColorPicker(false) }}
@@ -210,14 +219,21 @@ export default function Toolbar({
         >
           ファイル ▲
         </button>
-        {showExportMenu && (
-          <div className="export-menu">
-            <button onClick={() => { onExportSpreadJpg(); setShowExportMenu(false) }}>このスプレッドをJPG</button>
-            <button onClick={() => { onExportAllPdf(); setShowExportMenu(false) }}>全ページをPDF</button>
-            <div className="export-sep" />
-            <button onClick={() => { onSaveProjectFile(); setShowExportMenu(false) }}>プロジェクト保存 (.namenote)</button>
-            <button onClick={() => { fileInputRef.current?.click(); setShowExportMenu(false) }}>プロジェクトを開く…</button>
-          </div>
+        {/* Export menu portal — avoids backdrop-filter stacking context on iOS */}
+        {showExportMenu && createPortal(
+          <>
+            <div className="popup-backdrop" onClick={() => setShowExportMenu(false)} />
+            <div className="export-menu">
+              <button onClick={() => { onExportSpreadJpg(); setShowExportMenu(false) }}>このスプレッドをJPG</button>
+              <button onClick={() => { onExportAllPdf(); setShowExportMenu(false) }}>全ページをPDF</button>
+              <div className="export-sep" />
+              <button onClick={() => { onSaveProjectFile(); setShowExportMenu(false) }}>プロジェクト保存 (.namenote)</button>
+              <button onClick={() => { fileInputRef.current?.click(); setShowExportMenu(false) }}>プロジェクトを開く…</button>
+              <div className="export-sep" />
+              <button onClick={() => { pdfInputRef.current?.click(); setShowExportMenu(false) }}>PDFを読み込む…</button>
+            </div>
+          </>,
+          document.body
         )}
         <input
           ref={fileInputRef}
@@ -227,6 +243,17 @@ export default function Toolbar({
           onChange={e => {
             const file = e.target.files?.[0]
             if (file) onLoadProjectFile(file)
+            e.target.value = ''
+          }}
+        />
+        <input
+          ref={pdfInputRef}
+          type="file"
+          accept="application/pdf"
+          style={{ display: 'none' }}
+          onChange={e => {
+            const file = e.target.files?.[0]
+            if (file) onImportPdf(file)
             e.target.value = ''
           }}
         />

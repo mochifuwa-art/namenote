@@ -6,6 +6,8 @@ import { useSelection } from './hooks/useSelection'
 import { useHistory } from './hooks/useHistory'
 import { exportSpreadAsJpg, exportAllAsPdf } from './utils/export'
 import { saveProjectFile, loadProjectFile } from './utils/save'
+import { importPdfPages } from './utils/pdfImport'
+import { PAGE_WIDTH, PAGE_HEIGHT } from './components/PageCanvas'
 import DeskCanvas from './components/DeskCanvas'
 import NotebookSpread from './components/NotebookSpread'
 import Toolbar from './components/Toolbar'
@@ -287,6 +289,35 @@ export default function App() {
     }
   }
 
+  // ── PDF import ───────────────────────────────────────────────────
+  const handleImportPdf = useCallback(async (file: File) => {
+    showToast('PDF読み込み中…')
+    try {
+      const pages = await importPdfPages(
+        file,
+        PAGE_WIDTH,
+        PAGE_HEIGHT,
+        (current, total) => showToast(`PDF読み込み中… ${current}/${total}ページ`)
+      )
+      saveNow()
+      // 右綴じマッピング: PDF p1→スプレッド0右, p2→スプレッド0左, p3→スプレッド1右…
+      const spreadsNeeded = Math.ceil(pages.length / 2)
+      for (let i = 0; i < pages.length; i++) {
+        const spreadIndex = Math.floor(i / 2)
+        const side = i % 2 === 0 ? 'R' : 'L'
+        localStorage.setItem(`namenote_page_${spreadIndex}_${side}`, pages[i])
+      }
+      pageStore.setSpreadCount(spreadsNeeded)
+      setTotalSpreads(spreadsNeeded)
+      setCurrentSpread(0)
+      pageStore.loadSpread(0, leftCanvasRef.current, rightCanvasRef.current)
+      showToast(`PDF読み込み完了：${pages.length}ページ`)
+    } catch (e) {
+      showToast('PDF読み込みに失敗しました')
+      console.error(e)
+    }
+  }, [saveNow, pageStore, showToast])
+
   // ── Selection action wrappers ─────────────────────────────────────
   const handleCut = () => {
     selection.cutSelection()
@@ -370,6 +401,7 @@ export default function App() {
         onExportAllPdf={handleExportAllPdf}
         onSaveProjectFile={handleSaveProjectFile}
         onLoadProjectFile={handleLoadProjectFile}
+        onImportPdf={handleImportPdf}
         selectionActive={selectionActive}
         onCut={handleCut}
         onCopy={handleCopy}

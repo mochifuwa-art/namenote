@@ -108,10 +108,17 @@
   transform: scale(1.1);
 }
 
+/* Transparent backdrop to close popup on outside tap */
+.popup-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 199;
+}
+
 /* Color popup */
 .color-popup {
   position: fixed;
-  bottom: 72px;
+  bottom: calc(72px + env(safe-area-inset-bottom, 0px));
   background: rgba(28, 20, 13, 0.97);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 10px;
@@ -196,7 +203,7 @@
 /* ── Export menu ──────────────────────────────────────────────── */
 .export-menu {
   position: fixed;
-  bottom: 72px;
+  bottom: calc(72px + env(safe-area-inset-bottom, 0px));
   right: 12px;
   background: rgba(28, 20, 13, 0.97);
   border: 1px solid rgba(255, 255, 255, 0.12);
