@@ -10,6 +10,7 @@ import DeskCanvas from './components/DeskCanvas'
 import NotebookSpread from './components/NotebookSpread'
 import Toolbar from './components/Toolbar'
 import Toast from './components/Toast'
+import PageOverviewPanel from './components/PageOverviewPanel'
 
 const SAVE_DEBOUNCE_MS = 600
 
@@ -19,6 +20,11 @@ export default function App() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved')
   const [selectionActive, setSelectionActive] = useState(false)
   const [hasClipboard, setHasClipboard] = useState(false)
+  const [showOverview, setShowOverview] = useState(false)
+  // Separate state for spread count so mutations (insert/reorder) trigger re-renders
+  const [totalSpreads, setTotalSpreads] = useState(() =>
+    parseInt(localStorage.getItem('namenote_spread_count') ?? '1', 10) || 1
+  )
 
   const deskCanvasRef = useRef<HTMLCanvasElement>(null)
   const leftCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -106,11 +112,44 @@ export default function App() {
   }, [currentSpread]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePrevSpread = () => { if (currentSpread > 0) goToSpread(currentSpread - 1) }
-  const handleNextSpread = () => { if (currentSpread < pageStore.getSpreadCount() - 1) goToSpread(currentSpread + 1) }
+  const handleNextSpread = () => { if (currentSpread < totalSpreads - 1) goToSpread(currentSpread + 1) }
   const handleAddSpread = () => {
     saveNow()
-    setCurrentSpread(pageStore.getSpreadCount())
+    const next = pageStore.getSpreadCount()
+    setTotalSpreads(next + 1)
+    setCurrentSpread(next)
   }
+
+  // ── Overview: reorder ────────────────────────────────────────────
+  const handleReorder = useCallback((from: number, to: number) => {
+    saveNow()
+    pageStore.reorderSpreads(from, to)
+    // Adjust currentSpread if its position in the array changed
+    let next = currentSpread
+    if (from === currentSpread) {
+      next = to
+    } else if (from < currentSpread && to >= currentSpread) {
+      next = currentSpread - 1
+    } else if (from > currentSpread && to <= currentSpread) {
+      next = currentSpread + 1
+    }
+    if (next !== currentSpread) {
+      setCurrentSpread(next)
+    } else {
+      // Canvas data may have shifted under us; reload
+      pageStore.loadSpread(currentSpread, leftCanvasRef.current, rightCanvasRef.current)
+    }
+  }, [saveNow, pageStore, currentSpread])
+
+  // ── Overview: insert blank spread ────────────────────────────────
+  const handleInsertAt = useCallback((at: number) => {
+    saveNow()
+    pageStore.insertSpreadAt(at)
+    setTotalSpreads(t => t + 1)
+    if (at <= currentSpread) {
+      setCurrentSpread(currentSpread + 1)
+    }
+  }, [saveNow, pageStore, currentSpread])
 
   // ── Notebook scale (fits both width and height) ──────────────────
   const computeNotebookScale = useCallback(() => {
@@ -236,8 +275,10 @@ export default function App() {
         deskCanvasRef.current,
         leftCanvasRef.current,
         rightCanvasRef.current,
-        currentSpread
+        0
       )
+      const loadedCount = parseInt((data as Record<string, string>)['namenote_spread_count'] ?? '1', 10) || 1
+      setTotalSpreads(loadedCount)
       setCurrentSpread(0)
       setSaveStatus('saved')
       showToast(`読み込みました：${file.name}`)
@@ -282,7 +323,7 @@ export default function App() {
         leftCanvasRef={leftCanvasRef}
         rightCanvasRef={rightCanvasRef}
         currentSpread={currentSpread}
-        totalSpreads={pageStore.getSpreadCount()}
+        totalSpreads={totalSpreads}
       />
 
       {/* Layer 3: Selection overlay canvas */}
@@ -319,7 +360,7 @@ export default function App() {
         tool={tool}
         onToolChange={t => { setTool(t); if (t.type !== 'lasso') selection.clearSelection() }}
         currentSpread={currentSpread}
-        totalSpreads={pageStore.getSpreadCount()}
+        totalSpreads={totalSpreads}
         onPrevSpread={handlePrevSpread}
         onNextSpread={handleNextSpread}
         onAddSpread={handleAddSpread}
@@ -339,6 +380,19 @@ export default function App() {
         canRedo={history.canRedo}
         onUndo={() => { history.undo(); markUnsaved() }}
         onRedo={() => { history.redo(); markUnsaved() }}
+        onOpenOverview={() => { saveNow(); setShowOverview(true) }}
+      />
+
+      {/* Page overview panel */}
+      <PageOverviewPanel
+        isOpen={showOverview}
+        onClose={() => setShowOverview(false)}
+        spreadCount={totalSpreads}
+        currentSpread={currentSpread}
+        onNavigate={idx => { goToSpread(idx) }}
+        onReorder={handleReorder}
+        onInsertAt={handleInsertAt}
+        getThumbnail={pageStore.getThumbnail}
       />
 
       {/* Toast notification */}

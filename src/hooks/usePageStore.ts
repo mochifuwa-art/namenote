@@ -39,12 +39,16 @@ export function usePageStore() {
 
   const getSpreadCount = useCallback(() => spreadCountRef.current, [])
 
+  const setSpreadCount = useCallback((n: number) => {
+    spreadCountRef.current = n
+    localStorage.setItem(SPREAD_COUNT_KEY, String(n))
+  }, [])
+
   const ensureSpread = useCallback((spreadIndex: number) => {
     if (spreadIndex + 1 > spreadCountRef.current) {
-      spreadCountRef.current = spreadIndex + 1
-      localStorage.setItem(SPREAD_COUNT_KEY, String(spreadCountRef.current))
+      setSpreadCount(spreadIndex + 1)
     }
-  }, [])
+  }, [setSpreadCount])
 
   const saveSpread = useCallback(
     (spreadIndex: number, leftCanvas: HTMLCanvasElement | null, rightCanvas: HTMLCanvasElement | null) => {
@@ -87,6 +91,54 @@ export function usePageStore() {
 
   const getDeskData = useCallback(() => localStorage.getItem(DESK_KEY), [])
 
+  const getThumbnail = useCallback((spreadIndex: number, side: 'L' | 'R'): string | null => {
+    return localStorage.getItem(pageKey(spreadIndex, side))
+  }, [])
+
+  /**
+   * Reorder: move spread at `from` to index `to` in the final array.
+   * Both indices are 0-based. The spread count doesn't change.
+   */
+  const reorderSpreads = useCallback((from: number, to: number) => {
+    if (from === to) return
+    const count = spreadCountRef.current
+    const spreads: Array<{ L: string | null; R: string | null }> = []
+    for (let i = 0; i < count; i++) {
+      spreads.push({
+        L: localStorage.getItem(pageKey(i, 'L')),
+        R: localStorage.getItem(pageKey(i, 'R')),
+      })
+    }
+    const [moved] = spreads.splice(from, 1)
+    spreads.splice(to, 0, moved)
+    for (let i = 0; i < spreads.length; i++) {
+      const s = spreads[i]
+      if (s.L) localStorage.setItem(pageKey(i, 'L'), s.L)
+      else localStorage.removeItem(pageKey(i, 'L'))
+      if (s.R) localStorage.setItem(pageKey(i, 'R'), s.R)
+      else localStorage.removeItem(pageKey(i, 'R'))
+    }
+  }, [])
+
+  /**
+   * Insert a blank spread at `at` (0-based).
+   * Shifts all spreads from `at` onward one position to the right.
+   */
+  const insertSpreadAt = useCallback((at: number) => {
+    const count = spreadCountRef.current
+    for (let i = count - 1; i >= at; i--) {
+      const L = localStorage.getItem(pageKey(i, 'L'))
+      const R = localStorage.getItem(pageKey(i, 'R'))
+      if (L) localStorage.setItem(pageKey(i + 1, 'L'), L)
+      else localStorage.removeItem(pageKey(i + 1, 'L'))
+      if (R) localStorage.setItem(pageKey(i + 1, 'R'), R)
+      else localStorage.removeItem(pageKey(i + 1, 'R'))
+    }
+    localStorage.removeItem(pageKey(at, 'L'))
+    localStorage.removeItem(pageKey(at, 'R'))
+    setSpreadCount(count + 1)
+  }, [setSpreadCount])
+
   const loadAllFromProjectData = useCallback(
     (
       projectData: Record<string, string>,
@@ -116,6 +168,10 @@ export function usePageStore() {
     loadDesk,
     getSpreadData,
     getDeskData,
+    getThumbnail,
+    reorderSpreads,
+    insertSpreadAt,
     loadAllFromProjectData,
   }
 }
+

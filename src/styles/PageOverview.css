@@ -1,0 +1,255 @@
+/* ── Backdrop ─────────────────────────────────────────────────────── */
+.ov-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+/* ── Panel ───────────────────────────────────────────────────────── */
+.ov-panel {
+  background: #1e1610;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  width: min(92vw, 860px);
+  max-height: 82vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.65);
+}
+
+/* ── Header ──────────────────────────────────────────────────────── */
+.ov-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
+
+.ov-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.ov-close-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.ov-close-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+/* ── Grid ────────────────────────────────────────────────────────── */
+.ov-grid {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  align-content: flex-start;
+  padding: 16px 10px 24px;
+  gap: 0;
+  overflow-y: auto;
+  touch-action: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── Insert zone ─────────────────────────────────────────────────── */
+.ov-insert {
+  width: 22px;
+  height: 130px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  position: relative;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.ov-insert-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.3);
+  line-height: 1;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  user-select: none;
+}
+
+.ov-insert:hover .ov-insert-icon {
+  color: rgba(255, 255, 255, 0.85);
+  border-color: rgba(96, 165, 250, 0.7);
+  background: rgba(96, 165, 250, 0.15);
+}
+
+/* Drop-target indicator */
+.ov-insert.drop-here {
+  background: rgba(96, 165, 250, 0.08);
+}
+
+.ov-insert.drop-here::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background: #60a5fa;
+  border-radius: 1px;
+  transform: translateX(-50%);
+}
+
+.ov-insert.drop-here .ov-insert-icon {
+  color: #60a5fa;
+  border-color: #60a5fa;
+  background: rgba(96, 165, 250, 0.2);
+}
+
+/* ── Spread card ─────────────────────────────────────────────────── */
+.ov-card {
+  width: 168px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1.5px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 8px 8px 7px;
+  cursor: pointer;
+  position: relative;
+  user-select: none;
+  -webkit-user-select: none;
+  flex-shrink: 0;
+  transition: border-color 0.14s, background 0.14s, opacity 0.14s, transform 0.14s;
+}
+
+.ov-card:hover {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.ov-card--current {
+  border-color: #60a5fa !important;
+  background: rgba(96, 165, 250, 0.09) !important;
+}
+
+.ov-card--dragging {
+  opacity: 0.35;
+  transform: scale(0.94);
+}
+
+/* Drag handle */
+.ov-drag-handle {
+  position: absolute;
+  top: 5px;
+  right: 7px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.18);
+  cursor: grab;
+  line-height: 1;
+  transition: color 0.12s;
+}
+
+.ov-card:hover .ov-drag-handle {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* ── Page thumbnails ─────────────────────────────────────────────── */
+.ov-pages {
+  display: flex;
+  gap: 4px;
+}
+
+.ov-page {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.ov-thumb {
+  width: 72px;
+  height: 102px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: #fffef8;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  flex-shrink: 0;
+}
+
+.ov-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.ov-thumb-blank {
+  width: 100%;
+  height: 100%;
+  background: #fffef8;
+}
+
+.ov-page-num {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.35);
+  letter-spacing: 0.02em;
+}
+
+/* ── Card footer ─────────────────────────────────────────────────── */
+.ov-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.ov-current-badge {
+  background: #3b82f6;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  letter-spacing: 0.02em;
+}
+
+.ov-spread-label {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.3);
+}
+
+/* ── Scrollbar styling ───────────────────────────────────────────── */
+.ov-grid::-webkit-scrollbar {
+  width: 6px;
+}
+
+.ov-grid::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ov-grid::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}

@@ -34,6 +34,7 @@ interface ToolbarProps {
   canRedo: boolean
   onUndo: () => void
   onRedo: () => void
+  onOpenOverview: () => void
 }
 
 export default function Toolbar({
@@ -60,6 +61,7 @@ export default function Toolbar({
   canRedo,
   onUndo,
   onRedo,
+  onOpenOverview,
 }: ToolbarProps) {
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [showColorPicker, setShowColorPicker] = useState(false)
@@ -184,6 +186,7 @@ export default function Toolbar({
         <span className="spread-label">{currentSpread + 1} / {totalSpreads}</span>
         <button className="nav-btn" onClick={onPrevSpread} disabled={currentSpread === 0} title="前のページ（右方向）">▶</button>
         <button className="nav-btn add-btn" onClick={onAddSpread} title="スプレッド追加">＋</button>
+        <button className="tool-btn" onClick={onOpenOverview} title="ページ一覧">☰</button>
       </div>
 
       <div className="toolbar-sep" />
