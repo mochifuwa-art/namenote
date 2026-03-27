@@ -21,8 +21,23 @@ function getBoundingBox(pts: Point[]) {
   return { minX, minY, maxX, maxY, w: maxX - minX, h: maxY - minY }
 }
 
-const HANDLE_HIT_R = 18  // タッチ用の広めのヒット半径 (px)
-const HANDLE_DRAW_R = 8  // 描画上のハンドル半径 (px)
+/** 点 (px,py) を中心 (cx,cy) 周りに angle ラジアン回転した座標を返す */
+function rotatePoint(px: number, py: number, cx: number, cy: number, angle: number): Point {
+  if (angle === 0) return { x: px, y: py }
+  const cos = Math.cos(angle)
+  const sin = Math.sin(angle)
+  const dx = px - cx
+  const dy = py - cy
+  return { x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos }
+}
+
+function dist(x1: number, y1: number, x2: number, y2: number) {
+  return Math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
+}
+
+const HANDLE_HIT_R = 18   // タッチ対応の広いヒット半径 (px)
+const HANDLE_DRAW_R = 8   // 描画ハンドル半径 (px)
+const ROT_HANDLE_OFFSET = 40  // 回転ハンドルを上端から離す距離 (px)
 
 interface UseSelectionOptions {
   overlayCanvasRef: React.RefObject<HTMLCanvasElement | null>
@@ -36,6 +51,7 @@ interface UseSelectionOptions {
 }
 
 type Phase = 'idle' | 'drawing-lasso' | 'selected' | 'moving' | 'pasting'
+type ActiveHandle = 'corner' | 'rotate' | null
 
 export function useSelection({
   overlayCanvasRef,
@@ -59,12 +75,15 @@ export function useSelection({
   const marchingOffsetRef = useRef(0)
   const animFrameRef = useRef<number>(0)
 
-  // リサイズ用
+  // リサイズ・回転用
   const pasteScaleRef = useRef(1)
-  const resizingRef = useRef(false)
-  const resizeCenterScreenRef = useRef<Point>({ x: 0, y: 0 })
+  const pasteRotationRef = useRef(0)
+  const activeHandleRef = useRef<ActiveHandle>(null)
+  const handleCenterRef = useRef<Point>({ x: 0, y: 0 })  // ハンドル操作開始時のペースト中心(スクリーン座標)
   const resizeInitDistRef = useRef(1)
   const resizeInitScaleRef = useRef(1)
+  const rotStartAngleRef = useRef(0)
+  const rotStartValueRef = useRef(0)
 
   const getDrawTarget = useCallback((clientX: number, clientY: number): { target: DrawTarget; rect: DOMRect | null; canvas: HTMLCanvasElement | null } => {
     const leftRect = leftCanvasRef.current?.getBoundingClientRect() ?? null
@@ -84,23 +103,42 @@ export function useSelection({
     return target.side === 'left' ? leftCanvasRef.current : rightCanvasRef.current
   }, [deskCanvasRef, leftCanvasRef, rightCanvasRef])
 
-  /** ペーストプレビューのスクリーン座標矩形を返す (null = 情報不足) */
-  const getPasteScreenRect = useCallback((): { sx: number; sy: number; pw: number; ph: number } | null => {
+  /**
+   * ペーストプレビューのハンドル座標を返す（スクリーン座標・回転済み）
+   * cx/cy: ペースト中心, pw/ph: 表示サイズ
+   * corners[4]: コーナーハンドル, rotHandle: 回転ハンドル
+   */
+  const getPasteHandles = useCallback((): {
+    cx: number; cy: number; pw: number; ph: number
+    corners: Point[]; rotHandle: Point
+  } | null => {
     const cb = clipboardRef.current
     const target = pasteTargetRef.current
     const rect = pasteTargetRectRef.current
     if (!cb || !target || !rect) return null
     const targetCanvas = getTargetCanvas(target)
     if (!targetCanvas) return null
+
     const scaleX = rect.width / targetCanvas.width
     const scaleY = rect.height / targetCanvas.height
     const ox = target.kind === 'desk' ? 0 : rect.left
     const oy = target.kind === 'desk' ? 0 : rect.top
     const pw = cb.width * scaleX * pasteScaleRef.current
     const ph = cb.height * scaleY * pasteScaleRef.current
-    const sx = pasteCanvasCoordRef.current.x * scaleX + ox - pw / 2
-    const sy = pasteCanvasCoordRef.current.y * scaleY + oy - ph / 2
-    return { sx, sy, pw, ph }
+    const cx = pasteCanvasCoordRef.current.x * scaleX + ox
+    const cy = pasteCanvasCoordRef.current.y * scaleY + oy
+    const angle = pasteRotationRef.current
+
+    const localCorners = [
+      { x: cx - pw / 2, y: cy - ph / 2 },
+      { x: cx + pw / 2, y: cy - ph / 2 },
+      { x: cx - pw / 2, y: cy + ph / 2 },
+      { x: cx + pw / 2, y: cy + ph / 2 },
+    ]
+    const corners = localCorners.map(c => rotatePoint(c.x, c.y, cx, cy, angle))
+    const rotHandle = rotatePoint(cx, cy - ph / 2 - ROT_HANDLE_OFFSET, cx, cy, angle)
+
+    return { cx, cy, pw, ph, corners, rotHandle }
   }, [getTargetCanvas])
 
   // Draw marching ants overlay
@@ -119,14 +157,13 @@ export function useSelection({
       if (!canvas) return
       const scaleX = rect.width / canvas.width
       const scaleY = rect.height / canvas.height
+      const ox = selectionTargetRef.current.kind === 'desk' ? 0 : rect.left
+      const oy = selectionTargetRef.current.kind === 'desk' ? 0 : rect.top
       ctx.beginPath()
       ctx.setLineDash([5, 5])
       ctx.strokeStyle = 'rgba(60,120,255,0.9)'
       ctx.lineWidth = 1.5
-      const first = pts[0]
-      const ox = selectionTargetRef.current.kind === 'desk' ? 0 : rect.left
-      const oy = selectionTargetRef.current.kind === 'desk' ? 0 : rect.top
-      ctx.moveTo(first.x * scaleX + ox, first.y * scaleY + oy)
+      ctx.moveTo(pts[0].x * scaleX + ox, pts[0].y * scaleY + oy)
       for (let i = 1; i < pts.length; i++) {
         ctx.lineTo(pts[i].x * scaleX + ox, pts[i].y * scaleY + oy)
       }
@@ -139,13 +176,13 @@ export function useSelection({
       if (!canvas) return
       const scaleX = rect.width / canvas.width
       const scaleY = rect.height / canvas.height
+      const ox = selectionTargetRef.current.kind === 'desk' ? 0 : rect.left
+      const oy = selectionTargetRef.current.kind === 'desk' ? 0 : rect.top
       ctx.beginPath()
       ctx.setLineDash([6, 3])
       ctx.lineDashOffset = -marchingOffsetRef.current
       ctx.strokeStyle = 'rgba(60,120,255,1)'
       ctx.lineWidth = 1.5
-      const ox = selectionTargetRef.current.kind === 'desk' ? 0 : rect.left
-      const oy = selectionTargetRef.current.kind === 'desk' ? 0 : rect.top
       ctx.moveTo(pts[0].x * scaleX + ox, pts[0].y * scaleY + oy)
       for (let i = 1; i < pts.length; i++) {
         ctx.lineTo(pts[i].x * scaleX + ox, pts[i].y * scaleY + oy)
@@ -155,14 +192,18 @@ export function useSelection({
     }
 
     if (phase === 'pasting' && clipboardRef.current && pasteTargetRef.current) {
-      const psr = getPasteScreenRect()
-      if (!psr) return
-      const { sx, sy, pw, ph } = psr
+      const handles = getPasteHandles()
+      if (!handles) return
+      const { cx, cy, pw, ph } = handles
       const cb = clipboardRef.current
+
+      ctx.save()
+      ctx.translate(cx, cy)
+      ctx.rotate(pasteRotationRef.current)
 
       // ペーストプレビュー画像
       ctx.globalAlpha = 0.75
-      ctx.drawImage(cb.canvas, sx, sy, pw, ph)
+      ctx.drawImage(cb.canvas, -pw / 2, -ph / 2, pw, ph)
       ctx.globalAlpha = 1
 
       // マーチングアンツの枠線
@@ -170,29 +211,46 @@ export function useSelection({
       ctx.lineDashOffset = -marchingOffsetRef.current
       ctx.strokeStyle = 'rgba(60,120,255,1)'
       ctx.lineWidth = 1.5
-      ctx.strokeRect(sx, sy, pw, ph)
+      ctx.strokeRect(-pw / 2, -ph / 2, pw, ph)
 
-      // コーナーハンドル（リサイズ用）
-      const corners = [
-        { x: sx,      y: sy      },
-        { x: sx + pw, y: sy      },
-        { x: sx,      y: sy + ph },
-        { x: sx + pw, y: sy + ph },
+      // コーナーハンドル（リサイズ用・白丸）
+      const localCorners = [
+        { x: -pw / 2, y: -ph / 2 }, { x: pw / 2, y: -ph / 2 },
+        { x: -pw / 2, y:  ph / 2 }, { x: pw / 2, y:  ph / 2 },
       ]
       ctx.setLineDash([])
       ctx.fillStyle = '#ffffff'
       ctx.strokeStyle = 'rgba(60,120,255,1)'
       ctx.lineWidth = 1.5
-      for (const c of corners) {
+      for (const c of localCorners) {
         ctx.beginPath()
         ctx.arc(c.x, c.y, HANDLE_DRAW_R, 0, Math.PI * 2)
         ctx.fill()
         ctx.stroke()
       }
-    }
-  }, [overlayCanvasRef, getTargetCanvas, getPasteScreenRect])
 
-  // Marching ants animation
+      // 回転ハンドル（青丸・上中央から離れた位置）
+      const rhY = -ph / 2 - ROT_HANDLE_OFFSET
+      ctx.beginPath()
+      ctx.moveTo(0, -ph / 2)
+      ctx.lineTo(0, rhY)
+      ctx.setLineDash([3, 3])
+      ctx.strokeStyle = 'rgba(60,120,255,0.5)'
+      ctx.lineWidth = 1
+      ctx.stroke()
+      ctx.setLineDash([])
+      ctx.beginPath()
+      ctx.arc(0, rhY, HANDLE_DRAW_R, 0, Math.PI * 2)
+      ctx.fillStyle = '#60a5fa'
+      ctx.fill()
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)'
+      ctx.lineWidth = 1.5
+      ctx.stroke()
+
+      ctx.restore()
+    }
+  }, [overlayCanvasRef, getTargetCanvas, getPasteHandles])
+
   const startMarchingAnts = useCallback(() => {
     const animate = () => {
       marchingOffsetRef.current = (marchingOffsetRef.current + 0.5) % 9
@@ -217,7 +275,6 @@ export function useSelection({
     onSelectionChange(false)
   }, [stopMarchingAnts, onSelectionChange])
 
-  // Cut the selection out of the source canvas
   const cutSelection = useCallback(() => {
     if (phaseRef.current !== 'selected') return
     const pts = lassoPointsRef.current
@@ -321,7 +378,6 @@ export function useSelection({
   const startPaste = useCallback(() => {
     const cb = clipboardRef.current
     if (!cb) return
-    // 元の場所にプレビューを初期配置
     const srcCanvas = getTargetCanvas(cb.sourceTarget)
     const srcRect = srcCanvas?.getBoundingClientRect() ?? null
     if (srcCanvas && srcRect) {
@@ -330,11 +386,12 @@ export function useSelection({
       pasteCanvasCoordRef.current = { x: cb.sourceX + cb.width / 2, y: cb.sourceY + cb.height / 2 }
     }
     pasteScaleRef.current = 1
+    pasteRotationRef.current = 0
     phaseRef.current = 'pasting'
     startMarchingAnts()
   }, [startMarchingAnts, getTargetCanvas])
 
-  /** スケールを考慮してペーストをコミット */
+  /** スケール・回転を適用してペーストをコミット */
   const commitPaste = useCallback(() => {
     if (phaseRef.current !== 'pasting' || !clipboardRef.current) return
     const cb = clipboardRef.current
@@ -346,9 +403,11 @@ export function useSelection({
     const dctx = destCanvas.getContext('2d')!
     const scaledW = cb.width * pasteScaleRef.current
     const scaledH = cb.height * pasteScaleRef.current
-    const cx = pasteCanvasCoordRef.current.x - scaledW / 2
-    const cy = pasteCanvasCoordRef.current.y - scaledH / 2
-    dctx.drawImage(cb.canvas, 0, 0, cb.width, cb.height, cx, cy, scaledW, scaledH)
+    dctx.save()
+    dctx.translate(pasteCanvasCoordRef.current.x, pasteCanvasCoordRef.current.y)
+    dctx.rotate(pasteRotationRef.current)
+    dctx.drawImage(cb.canvas, 0, 0, cb.width, cb.height, -scaledW / 2, -scaledH / 2, scaledW, scaledH)
+    dctx.restore()
     clearSelection()
   }, [getTargetCanvas, onBeforeEdit, clearSelection])
 
@@ -361,13 +420,13 @@ export function useSelection({
     const rect = selectionTargetRectRef.current!
     const bb = getBoundingBox(pts)
 
-    cutSelection()  // クリップボードに入れてソースから消去
+    cutSelection()
 
-    // ペースト位置を元の選択中心に初期化
     pasteTargetRef.current = target
     pasteTargetRectRef.current = rect
     pasteCanvasCoordRef.current = { x: bb.minX + bb.w / 2, y: bb.minY + bb.h / 2 }
     pasteScaleRef.current = 1
+    pasteRotationRef.current = 0
     phaseRef.current = 'pasting'
     startMarchingAnts()
   }, [cutSelection, startMarchingAnts])
@@ -380,23 +439,27 @@ export function useSelection({
     if (!canvas || !rect) return
 
     if (phaseRef.current === 'pasting') {
-      // コーナーハンドルのヒット判定
-      const psr = getPasteScreenRect()
-      if (psr) {
-        const { sx, sy, pw, ph } = psr
-        const corners = [
-          { x: sx,      y: sy      },
-          { x: sx + pw, y: sy      },
-          { x: sx,      y: sy + ph },
-          { x: sx + pw, y: sy + ph },
-        ]
+      const handles = getPasteHandles()
+      if (handles) {
+        const { cx, cy, corners, rotHandle } = handles
+
+        // 回転ハンドル判定
+        if (dist(e.clientX, e.clientY, rotHandle.x, rotHandle.y) <= HANDLE_HIT_R) {
+          activeHandleRef.current = 'rotate'
+          handleCenterRef.current = { x: cx, y: cy }
+          rotStartAngleRef.current = Math.atan2(e.clientY - cy, e.clientX - cx)
+          rotStartValueRef.current = pasteRotationRef.current
+          overlayDivRef.current?.setPointerCapture(e.pointerId)
+          return
+        }
+
+        // コーナーハンドル判定
         for (const c of corners) {
-          if (Math.abs(e.clientX - c.x) <= HANDLE_HIT_R && Math.abs(e.clientY - c.y) <= HANDLE_HIT_R) {
-            // リサイズ開始
-            resizingRef.current = true
-            resizeCenterScreenRef.current = { x: sx + pw / 2, y: sy + ph / 2 }
-            const dx = c.x - resizeCenterScreenRef.current.x
-            const dy = c.y - resizeCenterScreenRef.current.y
+          if (dist(e.clientX, e.clientY, c.x, c.y) <= HANDLE_HIT_R) {
+            activeHandleRef.current = 'corner'
+            handleCenterRef.current = { x: cx, y: cy }
+            const dx = c.x - cx
+            const dy = c.y - cy
             resizeInitDistRef.current = Math.sqrt(dx * dx + dy * dy) || 1
             resizeInitScaleRef.current = pasteScaleRef.current
             overlayDivRef.current?.setPointerCapture(e.pointerId)
@@ -404,6 +467,7 @@ export function useSelection({
           }
         }
       }
+
       // ハンドル以外をタップ → 現在位置にコミット
       const coords = target.kind === 'desk'
         ? { x: e.clientX, y: e.clientY }
@@ -437,21 +501,29 @@ export function useSelection({
     const coords = target.kind === 'desk' ? { x: e.clientX, y: e.clientY } : toCanvasCoords(e.clientX, e.clientY, rect, canvas)
     lassoPointsRef.current = [coords]
     overlayDivRef.current?.setPointerCapture(e.pointerId)
-  }, [enabled, getDrawTarget, getPasteScreenRect, clearSelection, commitPaste, overlayDivRef])
+  }, [enabled, getDrawTarget, getPasteHandles, clearSelection, commitPaste, overlayDivRef])
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     if (!enabled) return
     if (e.pointerType === 'touch' && !e.isPrimary) return
 
     if (phaseRef.current === 'pasting') {
-      if (resizingRef.current) {
+      if (activeHandleRef.current === 'corner') {
         // リサイズ: 中心からの距離比でスケール更新
-        const cx = resizeCenterScreenRef.current.x
-        const cy = resizeCenterScreenRef.current.y
+        const cx = handleCenterRef.current.x
+        const cy = handleCenterRef.current.y
         const dx = e.clientX - cx
         const dy = e.clientY - cy
         const newDist = Math.sqrt(dx * dx + dy * dy) || 1
         pasteScaleRef.current = Math.max(0.1, resizeInitScaleRef.current * newDist / resizeInitDistRef.current)
+        return
+      }
+      if (activeHandleRef.current === 'rotate') {
+        // 回転: 中心から見たポインタ角度の変化量を加算
+        const cx = handleCenterRef.current.x
+        const cy = handleCenterRef.current.y
+        const angle = Math.atan2(e.clientY - cy, e.clientX - cx)
+        pasteRotationRef.current = rotStartValueRef.current + (angle - rotStartAngleRef.current)
         return
       }
       // ペーストプレビューをポインタに追従
@@ -493,8 +565,8 @@ export function useSelection({
     if (!enabled) return
     overlayDivRef.current?.releasePointerCapture(e.pointerId)
 
-    if (phaseRef.current === 'pasting' && resizingRef.current) {
-      resizingRef.current = false
+    if (phaseRef.current === 'pasting' && activeHandleRef.current !== null) {
+      activeHandleRef.current = null
       return
     }
 

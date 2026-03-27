@@ -1,4 +1,4 @@
-import { forwardRef, useEffect } from 'react'
+import { forwardRef } from 'react'
 
 export const PAGE_WIDTH = 560
 export const PAGE_HEIGHT = 800
@@ -8,15 +8,8 @@ interface PageCanvasProps {
 }
 
 const PageCanvas = forwardRef<HTMLCanvasElement, PageCanvasProps>(({ side }, ref) => {
-  useEffect(() => {
-    const canvas = (ref as React.RefObject<HTMLCanvasElement>).current
-    if (!canvas) return
-    // Paint white background so eraser reveals white, not transparency
-    const ctx = canvas.getContext('2d')!
-    ctx.fillStyle = '#fffef8'
-    ctx.fillRect(0, 0, PAGE_WIDTH, PAGE_HEIGHT)
-  }, [ref])
-
+  // キャンバス自体は透明のまま。背景色はCSSの backgroundColor で表示。
+  // これにより、コピー&ペースト時に未描画領域の白が一緒にコピーされるのを防ぐ。
   return (
     <canvas
       ref={ref}

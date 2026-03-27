@@ -16,17 +16,10 @@ function saveCanvas(canvas: HTMLCanvasElement, key: string) {
   }
 }
 
-/** Save the full-screen desk canvas as JPEG (with desk background) to stay within quota. */
+/** Save the desk canvas as transparent PNG (ink only, no brown background). */
 function saveDeskCanvas(canvas: HTMLCanvasElement) {
   try {
-    const tmp = document.createElement('canvas')
-    tmp.width = canvas.width
-    tmp.height = canvas.height
-    const ctx = tmp.getContext('2d')!
-    ctx.fillStyle = '#8b7355'
-    ctx.fillRect(0, 0, tmp.width, tmp.height)
-    ctx.drawImage(canvas, 0, 0)
-    const data = tmp.toDataURL('image/jpeg', 0.85)
+    const data = canvas.toDataURL('image/png')
     localStorage.setItem(DESK_KEY, data)
   } catch {
     // Quota exceeded — ignore
@@ -36,11 +29,7 @@ function saveDeskCanvas(canvas: HTMLCanvasElement) {
 function loadCanvasFromData(canvas: HTMLCanvasElement, data: string | null) {
   const ctx = canvas.getContext('2d')!
   ctx.clearRect(0, 0, canvas.width, canvas.height)
-  if (!data) {
-    ctx.fillStyle = '#fffef8'
-    ctx.fillRect(0, 0, canvas.width, canvas.height)
-    return
-  }
+  if (!data) return  // 透明のまま。CSS backgroundColor が視覚的な背景色を担当
   const img = new Image()
   img.onload = () => {
     ctx.clearRect(0, 0, canvas.width, canvas.height)
