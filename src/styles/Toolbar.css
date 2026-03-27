@@ -1,0 +1,215 @@
+/* ── Toolbar container ─────────────────────────────────────────── */
+.toolbar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 56px;
+  z-index: 101;
+
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 2px;
+  padding: 0 12px;
+  padding-bottom: max(0px, env(safe-area-inset-bottom));
+  overflow-x: auto;
+  overflow-y: hidden;
+
+  background: rgba(28, 20, 13, 0.94);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: 0 -2px 16px rgba(0, 0, 0, 0.4);
+}
+
+/* ── Groups & separators ──────────────────────────────────────── */
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.toolbar-sep {
+  width: 1px;
+  height: 28px;
+  background: rgba(255, 255, 255, 0.12);
+  margin: 0 6px;
+  flex-shrink: 0;
+}
+
+/* ── Base button ──────────────────────────────────────────────── */
+.tool-btn, .nav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  white-space: nowrap;
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tool-btn:hover, .nav-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.tool-btn.active {
+  background: rgba(96, 165, 250, 0.25);
+  color: #93c5fd;
+}
+
+.tool-btn:disabled, .nav-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* ── Color button ─────────────────────────────────────────────── */
+.color-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: border-color 0.12s, transform 0.1s;
+}
+
+.color-btn:hover {
+  border-color: rgba(255, 255, 255, 0.7);
+  transform: scale(1.1);
+}
+
+/* Color popup */
+.color-popup {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  background: rgba(28, 20, 13, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  padding: 10px;
+  width: 180px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  z-index: 200;
+}
+
+.color-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.color-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+
+.color-swatch:hover {
+  transform: scale(1.15);
+}
+
+/* ── Brush size buttons ────────────────────────────────────────── */
+.size-group {
+  gap: 1px;
+}
+
+.size-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  transition: background 0.1s;
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.size-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.size-btn.active {
+  background: rgba(96, 165, 250, 0.2);
+  color: #93c5fd;
+}
+
+/* ── Page navigation ──────────────────────────────────────────── */
+.spread-label {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+  min-width: 40px;
+  text-align: center;
+  padding: 0 4px;
+  white-space: nowrap;
+}
+
+.add-btn {
+  font-size: 16px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* ── Save button ──────────────────────────────────────────────── */
+.save-btn {
+  font-size: 12px;
+  gap: 2px;
+}
+
+/* ── Export menu ──────────────────────────────────────────────── */
+.export-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  background: rgba(28, 20, 13, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  z-index: 200;
+  min-width: 200px;
+}
+
+.export-menu button {
+  display: block;
+  width: 100%;
+  padding: 10px 14px;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.1s;
+  white-space: nowrap;
+}
+
+.export-menu button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.export-sep {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 2px 0;
+}
