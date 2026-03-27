@@ -155,11 +155,11 @@ export default function Toolbar({
         </>
       )}
 
-      {/* Page navigation */}
+      {/* Page navigation — 右綴じ: 前へ=▶(右方向/表紙側)、次へ=◀(左方向/奥側) */}
       <div className="toolbar-group">
-        <button className="nav-btn" onClick={onPrevSpread} disabled={currentSpread === 0} title="前のページ">◀</button>
+        <button className="nav-btn" onClick={onNextSpread} disabled={currentSpread === totalSpreads - 1} title="次のページ（左方向）">◀</button>
         <span className="spread-label">{currentSpread + 1} / {totalSpreads}</span>
-        <button className="nav-btn" onClick={onNextSpread} disabled={currentSpread === totalSpreads - 1} title="次のページ">▶</button>
+        <button className="nav-btn" onClick={onPrevSpread} disabled={currentSpread === 0} title="前のページ（右方向）">▶</button>
         <button className="nav-btn add-btn" onClick={onAddSpread} title="スプレッド追加">＋</button>
       </div>
 
