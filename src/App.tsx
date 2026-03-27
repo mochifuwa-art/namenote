@@ -8,6 +8,7 @@ import { saveProjectFile, loadProjectFile } from './utils/save'
 import DeskCanvas from './components/DeskCanvas'
 import NotebookSpread from './components/NotebookSpread'
 import Toolbar from './components/Toolbar'
+import Toast from './components/Toast'
 
 const SAVE_DEBOUNCE_MS = 600
 
@@ -25,7 +26,17 @@ export default function App() {
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null)
   const notebookRef = useRef<HTMLDivElement>(null)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // ── Toast notification ───────────────────────────────────────────
+  const [toastMsg, setToastMsg] = useState<string | null>(null)
+  const [toastKey, setToastKey] = useState(0)
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const showToast = useCallback((msg: string) => {
+    setToastMsg(msg)
+    setToastKey(k => k + 1)
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+    toastTimerRef.current = setTimeout(() => setToastMsg(null), 3000)
+  }, [])
 
   const pageStore = usePageStore()
 
@@ -174,28 +185,41 @@ export default function App() {
   }, [tool.type, selection, drawing])
 
   // ── Export / Save ────────────────────────────────────────────────
-  const handleExportSpreadJpg = () => {
+  const handleExportSpreadJpg = async () => {
     saveNow()
-    exportSpreadAsJpg(leftCanvasRef.current, rightCanvasRef.current, currentSpread)
+    try {
+      const rightPageNum = currentSpread * 2 + 1
+      const filename = await exportSpreadAsJpg(leftCanvasRef.current, rightCanvasRef.current, rightPageNum)
+      showToast(`書き出しました：${filename}`)
+    } catch (e) {
+      if ((e as Error).name !== 'AbortError') showToast('書き出しに失敗しました')
+    }
   }
 
   const handleExportAllPdf = async () => {
     saveNow()
-    await exportAllAsPdf(pageStore.getSpreadCount(), pageStore.getSpreadData)
+    try {
+      const filename = await exportAllAsPdf(pageStore.getSpreadCount(), pageStore.getSpreadData)
+      showToast(`PDF を書き出しました：${filename}`)
+    } catch (e) {
+      if ((e as Error).name !== 'AbortError') showToast('PDF の書き出しに失敗しました')
+    }
   }
 
-  const handleSaveProjectFile = () => {
+  // "保存" button: save to localStorage (auto-save) AND download a project file
+  const handleSaveButton = useCallback(async () => {
     saveNow()
-    saveProjectFile(pageStore.getSpreadCount())
-  }
+    try {
+      const filename = await saveProjectFile(pageStore.getSpreadCount())
+      showToast(`保存しました：${filename}`)
+    } catch (e) {
+      if ((e as Error).name !== 'AbortError') showToast('保存に失敗しました')
+    }
+  }, [saveNow, pageStore, showToast])
 
-  const handleLoadProjectFile = () => {
-    fileInputRef.current?.click()
-  }
+  const handleSaveProjectFile = handleSaveButton  // export menu alias
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+  const handleLoadProjectFile = async (file: File) => {
     try {
       const data = await loadProjectFile(file)
       pageStore.loadAllFromProjectData(
@@ -207,10 +231,10 @@ export default function App() {
       )
       setCurrentSpread(0)
       setSaveStatus('saved')
+      showToast(`読み込みました：${file.name}`)
     } catch (err) {
-      alert(`ファイルの読み込みに失敗しました: ${(err as Error).message}`)
+      showToast(`読み込み失敗：${(err as Error).message}`)
     }
-    e.target.value = ''
   }
 
   // ── Selection action wrappers ─────────────────────────────────────
@@ -291,7 +315,7 @@ export default function App() {
         onNextSpread={handleNextSpread}
         onAddSpread={handleAddSpread}
         saveStatus={saveStatus}
-        onSave={saveNow}
+        onSave={handleSaveButton}
         onExportSpreadJpg={handleExportSpreadJpg}
         onExportAllPdf={handleExportAllPdf}
         onSaveProjectFile={handleSaveProjectFile}
@@ -304,14 +328,8 @@ export default function App() {
         hasClipboard={hasClipboard}
       />
 
-      {/* Hidden file input for project loading */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".namenote,application/json"
-        style={{ display: 'none' }}
-        onChange={handleFileChange}
-      />
+      {/* Toast notification */}
+      <Toast key={toastKey} message={toastMsg} />
     </div>
   )
 }

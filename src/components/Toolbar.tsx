@@ -23,7 +23,7 @@ interface ToolbarProps {
   onExportSpreadJpg: () => void
   onExportAllPdf: () => void
   onSaveProjectFile: () => void
-  onLoadProjectFile: () => void
+  onLoadProjectFile: (file: File) => void
   selectionActive: boolean
   onCut: () => void
   onCopy: () => void
@@ -167,7 +167,7 @@ export default function Toolbar({
 
       {/* Save */}
       <div className="toolbar-group">
-        <button className="tool-btn save-btn" onClick={onSave} title="保存">
+        <button className="tool-btn save-btn" onClick={onSave} title="プロジェクトをファイルに保存">
           <span style={{ color: saveColor, marginRight: 4 }}>{saveIndicator}</span>保存
         </button>
       </div>
@@ -195,7 +195,11 @@ export default function Toolbar({
           type="file"
           accept=".namenote,application/json"
           style={{ display: 'none' }}
-          onChange={e => { if (e.target.files?.[0]) { onLoadProjectFile(); e.target.value = '' } }}
+          onChange={e => {
+            const file = e.target.files?.[0]
+            if (file) onLoadProjectFile(file)
+            e.target.value = ''
+          }}
         />
       </div>
     </div>

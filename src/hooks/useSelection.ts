@@ -260,8 +260,11 @@ export function useSelection({
     if (!srcCanvas || pts.length < 3) { clearSelection(); return }
     const sctx = srcCanvas.getContext('2d')!
     sctx.save()
-    sctx.fillStyle = '#fffef8'
-    sctx.globalCompositeOperation = 'source-over'
+    // Use destination-out to punch transparent holes (same as cut).
+    // Page canvases show their CSS backgroundColor (#fffef8) through transparent pixels.
+    // Desk canvas shows the body background through transparent pixels.
+    sctx.globalCompositeOperation = 'destination-out'
+    sctx.fillStyle = 'black'
     sctx.beginPath()
     sctx.moveTo(pts[0].x, pts[0].y)
     for (let i = 1; i < pts.length; i++) sctx.lineTo(pts[i].x, pts[i].y)
