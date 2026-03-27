@@ -92,9 +92,8 @@
 
 /* Color popup */
 .color-popup {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 0;
+  position: fixed;
+  bottom: 64px;
   background: rgba(28, 20, 13, 0.97);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 10px;
@@ -178,9 +177,9 @@
 
 /* ── Export menu ──────────────────────────────────────────────── */
 .export-menu {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  right: 0;
+  position: fixed;
+  bottom: 64px;
+  right: 12px;
   background: rgba(28, 20, 13, 0.97);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 10px;

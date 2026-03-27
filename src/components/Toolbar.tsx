@@ -63,7 +63,9 @@ export default function Toolbar({
 }: ToolbarProps) {
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [showColorPicker, setShowColorPicker] = useState(false)
+  const [colorPopupLeft, setColorPopupLeft] = useState(12)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const colorGroupRef = useRef<HTMLDivElement>(null)
 
   const setToolType = (type: ToolType) => onToolChange({ ...tool, type })
   const setColor = (color: string) => { onToolChange({ ...tool, type: 'pen', color }); setShowColorPicker(false) }
@@ -113,15 +115,20 @@ export default function Toolbar({
       <div className="toolbar-sep" />
 
       {/* Color */}
-      <div className="toolbar-group" style={{ position: 'relative' }}>
+      <div className="toolbar-group" ref={colorGroupRef}>
         <button
           className="color-btn"
           style={{ background: tool.color, outline: showColorPicker ? '2px solid #fff' : 'none' }}
-          onClick={() => { setShowColorPicker(v => !v); setShowExportMenu(false) }}
+          onClick={() => {
+            const left = colorGroupRef.current?.getBoundingClientRect().left ?? 12
+            setColorPopupLeft(left)
+            setShowColorPicker(v => !v)
+            setShowExportMenu(false)
+          }}
           title="色"
         />
         {showColorPicker && (
-          <div className="color-popup">
+          <div className="color-popup" style={{ left: colorPopupLeft }}>
             <div className="color-grid">
               {PRESET_COLORS.map(c => (
                 <button
