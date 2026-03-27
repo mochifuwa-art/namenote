@@ -1,0 +1,44 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: #4a3828;
+  background-image:
+    /* Wood grain texture */
+    repeating-linear-gradient(
+      88deg,
+      transparent,
+      transparent 18px,
+      rgba(0, 0, 0, 0.025) 18px,
+      rgba(0, 0, 0, 0.025) 19px
+    ),
+    repeating-linear-gradient(
+      2deg,
+      transparent,
+      transparent 60px,
+      rgba(255, 255, 255, 0.02) 60px,
+      rgba(255, 255, 255, 0.02) 61px
+    ),
+    linear-gradient(170deg, #5a4535 0%, #3d2d1e 50%, #4a3828 100%);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Sans', 'Meiryo', sans-serif;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+}
+
+.app-root {
+  position: relative;
+  width: 100%;
+  height: 100dvh;
+}
+
+/* Scrollbar hide for overflow containers */
+::-webkit-scrollbar { display: none; }

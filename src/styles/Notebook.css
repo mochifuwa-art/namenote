@@ -1,0 +1,118 @@
+/* ── Notebook spread container ─────────────────────────────────── */
+.notebook-spread {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, calc(-50% - 28px)); /* 28px = half toolbar height */
+  display: flex;
+  align-items: stretch;
+  width: 1128px;  /* 560 + 8 + 560 */
+  height: 800px;
+  z-index: 1;
+  pointer-events: none;
+
+  border-radius: 3px 3px 0 0;
+  box-shadow:
+    0 4px 8px rgba(0, 0, 0, 0.4),
+    0 12px 40px rgba(0, 0, 0, 0.5),
+    0 2px 0 rgba(255, 255, 255, 0.04) inset;
+}
+
+/* ── Individual page ───────────────────────────────────────────── */
+.notebook-page {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+}
+
+.notebook-page-left {
+  border-radius: 3px 0 0 0;
+}
+
+.notebook-page-right {
+  border-radius: 0 3px 0 0;
+}
+
+/* Faint blue ruled lines (manga namenote style) */
+.notebook-lines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  background-image: linear-gradient(
+    to bottom,
+    transparent calc(32px - 1px),
+    rgba(160, 190, 240, 0.22) calc(32px - 1px),
+    rgba(160, 190, 240, 0.22) 32px,
+    transparent 32px
+  );
+  background-size: 100% 32px;
+}
+
+/* Page canvas fills the page */
+.notebook-page canvas {
+  flex: 1;
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* ── Spine ────────────────────────────────────────────────────── */
+.notebook-spine {
+  width: 8px;
+  flex-shrink: 0;
+  background: linear-gradient(
+    to right,
+    rgba(0, 0, 0, 0.18) 0%,
+    rgba(0, 0, 0, 0.06) 30%,
+    rgba(255, 255, 255, 0.04) 50%,
+    rgba(0, 0, 0, 0.06) 70%,
+    rgba(0, 0, 0, 0.18) 100%
+  );
+  box-shadow:
+    2px 0 6px rgba(0, 0, 0, 0.15),
+    -2px 0 6px rgba(0, 0, 0, 0.15);
+  z-index: 3;
+}
+
+/* ── Page number indicator ────────────────────────────────────── */
+.notebook-page-indicator {
+  position: absolute;
+  bottom: -24px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+  white-space: nowrap;
+  pointer-events: none;
+  letter-spacing: 0.04em;
+}
+
+/* ── Responsive scaling ────────────────────────────────────────── */
+@media (max-width: 1180px) {
+  .notebook-spread {
+    transform: translate(-50%, calc(-50% - 28px)) scale(0.75);
+  }
+}
+
+@media (max-width: 900px) {
+  .notebook-spread {
+    transform: translate(-50%, calc(-50% - 28px)) scale(0.58);
+  }
+}
+
+@media (max-width: 700px) {
+  /* Single-page mode on phones: hide left page, show right only */
+  .notebook-spread {
+    width: 560px;
+    transform: translate(-50%, calc(-50% - 28px)) scale(0.9);
+  }
+  .notebook-page-left,
+  .notebook-spine {
+    display: none;
+  }
+  .notebook-page-right {
+    border-radius: 3px 3px 0 0;
+  }
+}
