@@ -1,4 +1,4 @@
-import { saveBlobWithPicker } from './filePicker'
+import { saveBlobAsDownload } from './filePicker'
 
 const SPREAD_COUNT_KEY = 'namenote_spread_count'
 
@@ -26,9 +26,7 @@ export async function saveProjectFile(spreadCount: number): Promise<string> {
   const json = JSON.stringify(data)
   const blob = new Blob([json], { type: 'application/json' })
   const filename = `namenote_${new Date().toISOString().slice(0, 10)}.namenote`
-  return saveBlobWithPicker(blob, filename, [
-    { description: 'NameNote プロジェクト', accept: { 'application/json': ['.namenote'] } },
-  ])
+  return saveBlobAsDownload(blob, filename)
 }
 
 /** Load a .namenote project file. Returns a map of localStorage keys → values. */
