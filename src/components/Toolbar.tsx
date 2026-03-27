@@ -14,8 +14,6 @@ const BRUSH_SIZES = [1, 2, 4, 6, 10, 16, 24]
 interface ToolbarProps {
   tool: DrawingTool
   onToolChange: (t: DrawingTool) => void
-  currentSpread: number
-  totalSpreads: number
   onPrevSpread: () => void
   onNextSpread: () => void
   onAddSpread: () => void
@@ -26,9 +24,13 @@ interface ToolbarProps {
   onSaveProjectFile: () => void
   onLoadProjectFile: (file: File) => void
   onImportPdf: (file: File) => void
+  navLabel: string
+  prevDisabled: boolean
+  nextDisabled: boolean
   selectionActive: boolean
   onCut: () => void
   onCopy: () => void
+  onMove: () => void
   onPaste: () => void
   onDeleteSelection: () => void
   hasClipboard: boolean
@@ -42,8 +44,6 @@ interface ToolbarProps {
 export default function Toolbar({
   tool,
   onToolChange,
-  currentSpread,
-  totalSpreads,
   onPrevSpread,
   onNextSpread,
   onAddSpread,
@@ -54,9 +54,13 @@ export default function Toolbar({
   onSaveProjectFile,
   onLoadProjectFile,
   onImportPdf,
+  navLabel,
+  prevDisabled,
+  nextDisabled,
   selectionActive,
   onCut,
   onCopy,
+  onMove,
   onPaste,
   onDeleteSelection,
   hasClipboard,
@@ -183,6 +187,7 @@ export default function Toolbar({
           <div className="toolbar-group">
             <button className="tool-btn" onClick={onCut} disabled={!selectionActive} title="切り取り (Ctrl+X)">✂️</button>
             <button className="tool-btn" onClick={onCopy} disabled={!selectionActive} title="コピー (Ctrl+C)">📋</button>
+            <button className="tool-btn" onClick={onMove} disabled={!selectionActive} title="移動（その場でペースト開始）" style={{ fontSize: 11 }}>移動</button>
             <button className="tool-btn" onClick={onPaste} disabled={!hasClipboard} title="貼り付け (Ctrl+V)">📌</button>
             <button className="tool-btn" onClick={onDeleteSelection} disabled={!selectionActive} title="削除 (Del)">🗑️</button>
           </div>
@@ -192,9 +197,9 @@ export default function Toolbar({
 
       {/* Page navigation — 右綴じ: 前へ=▶(右方向/表紙側)、次へ=◀(左方向/奥側) */}
       <div className="toolbar-group">
-        <button className="nav-btn" onClick={onNextSpread} disabled={currentSpread === totalSpreads - 1} title="次のページ（左方向）">◀</button>
-        <span className="spread-label">{currentSpread + 1} / {totalSpreads}</span>
-        <button className="nav-btn" onClick={onPrevSpread} disabled={currentSpread === 0} title="前のページ（右方向）">▶</button>
+        <button className="nav-btn" onClick={onNextSpread} disabled={nextDisabled} title="次のページ（左方向）">◀</button>
+        <span className="spread-label">{navLabel}</span>
+        <button className="nav-btn" onClick={onPrevSpread} disabled={prevDisabled} title="前のページ（右方向）">▶</button>
         <button className="nav-btn add-btn" onClick={onAddSpread} title="スプレッド追加">＋</button>
         <button className="tool-btn tool-btn--labeled" onClick={onOpenOverview}>
           ☰<span className="tool-label">一覧</span>

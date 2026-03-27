@@ -17,6 +17,7 @@ export interface SelectionClipboard {
   sourceX: number  // 切り取り元のcanvas座標
   sourceY: number
   path: { x: number; y: number }[]  // なげなわパスの点列
+  sourceTarget: DrawTarget  // どのcanvasから切り取ったか
 }
 
 export type SaveStatus = 'saved' | 'unsaved' | 'saving'

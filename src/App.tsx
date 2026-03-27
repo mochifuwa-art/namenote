@@ -27,6 +27,8 @@ export default function App() {
   const [totalSpreads, setTotalSpreads] = useState(() =>
     parseInt(localStorage.getItem('namenote_spread_count') ?? '1', 10) || 1
   )
+  // スマホ単ページモード: 'R'=右ページ(奇数), 'L'=左ページ(偶数)
+  const [mobileSide, setMobileSide] = useState<'R' | 'L'>('R')
 
   const deskCanvasRef = useRef<HTMLCanvasElement>(null)
   const leftCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -102,10 +104,13 @@ export default function App() {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Page navigation ──────────────────────────────────────────────
-  const goToSpread = useCallback((next: number) => {
+  const isMobile = () => window.innerWidth <= 700
+
+  const goToSpread = useCallback((next: number, side: 'R' | 'L' = 'R') => {
     saveNow()
     history.clearPageHistory()
     setCurrentSpread(next)
+    setMobileSide(side)
   }, [saveNow, history])
 
   // Load spread whenever currentSpread changes (fires on mount too, covering spread 0)
@@ -113,13 +118,49 @@ export default function App() {
     pageStore.loadSpread(currentSpread, leftCanvasRef.current, rightCanvasRef.current)
   }, [currentSpread]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handlePrevSpread = () => { if (currentSpread > 0) goToSpread(currentSpread - 1) }
-  const handleNextSpread = () => { if (currentSpread < totalSpreads - 1) goToSpread(currentSpread + 1) }
+  // スマホ: 1ページずつ、デスクトップ: 1スプレッドずつ
+  const handlePrevPage = () => {
+    if (isMobile()) {
+      if (mobileSide === 'L') {
+        setMobileSide('R')
+      } else if (currentSpread > 0) {
+        goToSpread(currentSpread - 1, 'L')
+      }
+    } else {
+      if (currentSpread > 0) goToSpread(currentSpread - 1)
+    }
+  }
+  const handleNextPage = () => {
+    if (isMobile()) {
+      if (mobileSide === 'R') {
+        setMobileSide('L')
+      } else if (currentSpread < totalSpreads - 1) {
+        goToSpread(currentSpread + 1, 'R')
+      }
+    } else {
+      if (currentSpread < totalSpreads - 1) goToSpread(currentSpread + 1)
+    }
+  }
+
+  // ナビゲーションのdisabled判定
+  const prevDisabled = isMobile()
+    ? currentSpread === 0 && mobileSide === 'R'
+    : currentSpread === 0
+  const nextDisabled = isMobile()
+    ? currentSpread === totalSpreads - 1 && mobileSide === 'L'
+    : currentSpread === totalSpreads - 1
+
+  // ナビゲーションラベル
+  const navLabel = isMobile()
+    ? `p.${currentSpread * 2 + (mobileSide === 'R' ? 1 : 2)} / ${totalSpreads * 2}`
+    : `${currentSpread + 1} / ${totalSpreads}`
+
   const handleAddSpread = () => {
     saveNow()
     const next = pageStore.getSpreadCount()
     setTotalSpreads(next + 1)
     setCurrentSpread(next)
+    setMobileSide('R')
   }
 
   // ── Overview: reorder ────────────────────────────────────────────
@@ -330,6 +371,12 @@ export default function App() {
     setHasClipboard(true)
     setSelectionActive(false)
   }
+  const handleMove = () => {
+    selection.startMove()
+    setHasClipboard(true)
+    setSelectionActive(false)
+    markUnsaved()
+  }
   const handlePaste = () => {
     if (selection.hasClipboard()) {
       selection.startPaste()
@@ -355,6 +402,7 @@ export default function App() {
         rightCanvasRef={rightCanvasRef}
         currentSpread={currentSpread}
         totalSpreads={totalSpreads}
+        mobileSide={mobileSide}
       />
 
       {/* Layer 3: Selection overlay canvas */}
@@ -390,10 +438,11 @@ export default function App() {
       <Toolbar
         tool={tool}
         onToolChange={t => { setTool(t); if (t.type !== 'lasso') selection.clearSelection() }}
-        currentSpread={currentSpread}
-        totalSpreads={totalSpreads}
-        onPrevSpread={handlePrevSpread}
-        onNextSpread={handleNextSpread}
+        navLabel={navLabel}
+        prevDisabled={prevDisabled}
+        nextDisabled={nextDisabled}
+        onPrevSpread={handlePrevPage}
+        onNextSpread={handleNextPage}
         onAddSpread={handleAddSpread}
         saveStatus={saveStatus}
         onSave={handleSaveButton}
@@ -405,6 +454,7 @@ export default function App() {
         selectionActive={selectionActive}
         onCut={handleCut}
         onCopy={handleCopy}
+        onMove={handleMove}
         onPaste={handlePaste}
         onDeleteSelection={handleDeleteSelection}
         hasClipboard={hasClipboard}

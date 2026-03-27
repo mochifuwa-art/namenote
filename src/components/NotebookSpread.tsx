@@ -7,15 +7,16 @@ interface NotebookSpreadProps {
   rightCanvasRef: React.RefObject<HTMLCanvasElement | null>
   currentSpread: number
   totalSpreads: number
+  mobileSide: 'R' | 'L'
 }
 
 const NotebookSpread = forwardRef<HTMLDivElement, NotebookSpreadProps>(
-  ({ leftCanvasRef, rightCanvasRef, currentSpread, totalSpreads }, ref) => {
+  ({ leftCanvasRef, rightCanvasRef, currentSpread, totalSpreads, mobileSide }, ref) => {
     // 右綴じ: 右ページが奇数ページ（先に読む）、左ページが偶数ページ
     const rightPageNum = currentSpread * 2 + 1
     const leftPageNum  = currentSpread * 2 + 2
     return (
-      <div ref={ref} className="notebook-spread">
+      <div ref={ref} className={`notebook-spread notebook-spread--mobile-${mobileSide === 'L' ? 'left' : 'right'}`}>
         {/* 左ページ（偶数・後に読む） */}
         <div className="notebook-page notebook-page-left">
           <div className="notebook-lines" />

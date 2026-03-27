@@ -130,11 +130,20 @@
   .notebook-spread {
     width: 560px;
   }
-  .notebook-page-left,
-  .notebook-spine {
+  /* 右ページ表示モード（デフォルト）: 左ページ・綴じを隠す */
+  .notebook-spread--mobile-right .notebook-page-left,
+  .notebook-spread--mobile-right .notebook-spine {
     display: none;
   }
-  .notebook-page-right {
+  .notebook-spread--mobile-right .notebook-page-right {
+    border-radius: 3px 3px 0 0;
+  }
+  /* 左ページ表示モード: 右ページ・綴じを隠す */
+  .notebook-spread--mobile-left .notebook-page-right,
+  .notebook-spread--mobile-left .notebook-spine {
+    display: none;
+  }
+  .notebook-spread--mobile-left .notebook-page-left {
     border-radius: 3px 3px 0 0;
   }
 }
