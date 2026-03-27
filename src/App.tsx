@@ -3,11 +3,13 @@ import type { DrawingTool, SaveStatus } from './types'
 import { usePageStore } from './hooks/usePageStore'
 import { useDrawing } from './hooks/useDrawing'
 import { useSelection } from './hooks/useSelection'
+import { useHistory } from './hooks/useHistory'
 import { exportSpreadAsJpg, exportAllAsPdf } from './utils/export'
 import { saveProjectFile, loadProjectFile } from './utils/save'
 import DeskCanvas from './components/DeskCanvas'
 import NotebookSpread from './components/NotebookSpread'
 import Toolbar from './components/Toolbar'
+import Toast from './components/Toast'
 
 const SAVE_DEBOUNCE_MS = 600
 
@@ -25,9 +27,20 @@ export default function App() {
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null)
   const notebookRef = useRef<HTMLDivElement>(null)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // ── Toast notification ───────────────────────────────────────────
+  const [toastMsg, setToastMsg] = useState<string | null>(null)
+  const [toastKey, setToastKey] = useState(0)
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const showToast = useCallback((msg: string) => {
+    setToastMsg(msg)
+    setToastKey(k => k + 1)
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+    toastTimerRef.current = setTimeout(() => setToastMsg(null), 3000)
+  }, [])
 
   const pageStore = usePageStore()
+  const history = useHistory(deskCanvasRef, leftCanvasRef, rightCanvasRef)
 
   // ── Auto-save logic ──────────────────────────────────────────────
   const markUnsaved = useCallback(() => {
@@ -56,6 +69,7 @@ export default function App() {
     leftCanvasRef,
     rightCanvasRef,
     overlayRef,
+    onBeforeStroke: history.push,
     onStrokeEnd: markUnsaved,
     enabled: tool.type !== 'lasso',
   })
@@ -68,6 +82,7 @@ export default function App() {
     rightCanvasRef,
     deskCanvasRef,
     enabled: tool.type === 'lasso',
+    onBeforeEdit: history.push,
     onSelectionChange: active => {
       setSelectionActive(active)
     },
@@ -76,32 +91,42 @@ export default function App() {
   // ── Initial load ─────────────────────────────────────────────────
   useEffect(() => {
     pageStore.loadDesk(deskCanvasRef.current)
-    pageStore.loadSpread(0, leftCanvasRef.current, rightCanvasRef.current)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Page navigation ──────────────────────────────────────────────
   const goToSpread = useCallback((next: number) => {
     saveNow()
+    history.clearPageHistory()
     setCurrentSpread(next)
-  }, [saveNow])
+  }, [saveNow, history])
 
+  // Load spread whenever currentSpread changes (fires on mount too, covering spread 0)
   useEffect(() => {
-    if (currentSpread === 0) return // initial load handled above
     pageStore.loadSpread(currentSpread, leftCanvasRef.current, rightCanvasRef.current)
-    // desk is not touched
   }, [currentSpread]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePrevSpread = () => { if (currentSpread > 0) goToSpread(currentSpread - 1) }
   const handleNextSpread = () => { if (currentSpread < pageStore.getSpreadCount() - 1) goToSpread(currentSpread + 1) }
   const handleAddSpread = () => {
     saveNow()
-    const next = pageStore.getSpreadCount()
-    pageStore.loadSpread(next, leftCanvasRef.current, rightCanvasRef.current)
-    setCurrentSpread(next)
+    setCurrentSpread(pageStore.getSpreadCount())
   }
+
+  // ── Notebook scale (fits both width and height) ──────────────────
+  const computeNotebookScale = useCallback(() => {
+    const NOTEBOOK_W = window.innerWidth <= 700 ? 560 : 1128
+    const NOTEBOOK_H = 800
+    const TOOLBAR_H = 56
+    const MARGIN = 40
+    const scaleW = (window.innerWidth - MARGIN) / NOTEBOOK_W
+    const scaleH = (window.innerHeight - TOOLBAR_H - MARGIN) / NOTEBOOK_H
+    const scale = Math.min(1, scaleW, scaleH)
+    document.documentElement.style.setProperty('--notebook-scale', String(scale.toFixed(4)))
+  }, [])
 
   // ── Window resize ────────────────────────────────────────────────
   useEffect(() => {
+    computeNotebookScale()
     const handleResize = () => {
       const canvas = deskCanvasRef.current
       if (!canvas) return
@@ -113,10 +138,11 @@ export default function App() {
         overlayCanvasRef.current.width = window.innerWidth
         overlayCanvasRef.current.height = window.innerHeight
       }
+      computeNotebookScale()
     }
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
-  }, [pageStore])
+  }, [pageStore, computeNotebookScale])
 
   // Set overlay canvas size on mount
   useEffect(() => {
@@ -133,10 +159,12 @@ export default function App() {
       if (e.key === 'e' && !e.ctrlKey && !e.metaKey) setTool(t => ({ ...t, type: 'eraser' }))
       if (e.key === 'l' && !e.ctrlKey && !e.metaKey) setTool(t => ({ ...t, type: 'lasso' }))
       if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveNow() }
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === 'z') { e.preventDefault(); history.undo(); markUnsaved() }
+      if ((e.ctrlKey || e.metaKey) && (e.shiftKey && e.key === 'z' || e.key === 'y')) { e.preventDefault(); history.redo(); markUnsaved() }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [saveNow])
+  }, [saveNow, history, markUnsaved])
 
   // ── Pointer event dispatcher ─────────────────────────────────────
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
@@ -166,26 +194,41 @@ export default function App() {
   // ── Export / Save ────────────────────────────────────────────────
   const handleExportSpreadJpg = () => {
     saveNow()
-    exportSpreadAsJpg(leftCanvasRef.current, rightCanvasRef.current, currentSpread)
+    try {
+      const rightPageNum = currentSpread * 2 + 1
+      const filename = exportSpreadAsJpg(leftCanvasRef.current, rightCanvasRef.current, rightPageNum)
+      showToast(`書き出しました：${filename}`)
+    } catch (e) {
+      showToast('書き出しに失敗しました')
+      console.error(e)
+    }
   }
 
-  const handleExportAllPdf = async () => {
+  const handleExportAllPdf = () => {
     saveNow()
-    await exportAllAsPdf(pageStore.getSpreadCount(), pageStore.getSpreadData)
+    try {
+      const filename = exportAllAsPdf(pageStore.getSpreadCount(), pageStore.getSpreadData)
+      showToast(`PDF を書き出しました：${filename}`)
+    } catch (e) {
+      showToast('PDF の書き出しに失敗しました')
+      console.error(e)
+    }
   }
 
-  const handleSaveProjectFile = () => {
+  // "保存" button: save to localStorage (auto-save) AND download a project file
+  const handleSaveButton = useCallback(async () => {
     saveNow()
-    saveProjectFile(pageStore.getSpreadCount())
-  }
+    try {
+      const filename = await saveProjectFile(pageStore.getSpreadCount())
+      showToast(`保存しました：${filename}`)
+    } catch (e) {
+      if ((e as Error).name !== 'AbortError') showToast('保存に失敗しました')
+    }
+  }, [saveNow, pageStore, showToast])
 
-  const handleLoadProjectFile = () => {
-    fileInputRef.current?.click()
-  }
+  const handleSaveProjectFile = handleSaveButton  // export menu alias
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+  const handleLoadProjectFile = async (file: File) => {
     try {
       const data = await loadProjectFile(file)
       pageStore.loadAllFromProjectData(
@@ -197,10 +240,10 @@ export default function App() {
       )
       setCurrentSpread(0)
       setSaveStatus('saved')
+      showToast(`読み込みました：${file.name}`)
     } catch (err) {
-      alert(`ファイルの読み込みに失敗しました: ${(err as Error).message}`)
+      showToast(`読み込み失敗：${(err as Error).message}`)
     }
-    e.target.value = ''
   }
 
   // ── Selection action wrappers ─────────────────────────────────────
@@ -281,7 +324,7 @@ export default function App() {
         onNextSpread={handleNextSpread}
         onAddSpread={handleAddSpread}
         saveStatus={saveStatus}
-        onSave={saveNow}
+        onSave={handleSaveButton}
         onExportSpreadJpg={handleExportSpreadJpg}
         onExportAllPdf={handleExportAllPdf}
         onSaveProjectFile={handleSaveProjectFile}
@@ -292,16 +335,14 @@ export default function App() {
         onPaste={handlePaste}
         onDeleteSelection={handleDeleteSelection}
         hasClipboard={hasClipboard}
+        canUndo={history.canUndo}
+        canRedo={history.canRedo}
+        onUndo={() => { history.undo(); markUnsaved() }}
+        onRedo={() => { history.redo(); markUnsaved() }}
       />
 
-      {/* Hidden file input for project loading */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".namenote,application/json"
-        style={{ display: 'none' }}
-        onChange={handleFileChange}
-      />
+      {/* Toast notification */}
+      <Toast key={toastKey} message={toastMsg} />
     </div>
   )
 }

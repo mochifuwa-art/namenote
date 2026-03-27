@@ -3,7 +3,7 @@
   position: fixed;
   top: 50%;
   left: 50%;
-  transform: translate(-50%, calc(-50% - 28px)); /* 28px = half toolbar height */
+  transform: translate(-50%, calc(-50% - 28px)) scale(var(--notebook-scale, 1)); /* scale set by JS to fit viewport */
   display: flex;
   align-items: stretch;
   width: 1128px;  /* 560 + 8 + 560 */
@@ -76,6 +76,41 @@
   z-index: 3;
 }
 
+/* ── Page corner numbers (ノンブル) ──────────────────────────── */
+.notebook-page-num {
+  position: absolute;
+  bottom: 10px;
+  font-size: 11px;
+  color: rgba(120, 130, 160, 0.55);
+  pointer-events: none;
+  z-index: 3;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.03em;
+}
+.notebook-page-num-right {
+  right: 12px; /* 右ページ：右下（外側）*/
+}
+.notebook-page-num-left {
+  left: 12px;  /* 左ページ：左下（外側）*/
+}
+
+/* ── 右端の製本シャドウ（右綴じの視覚的手がかり）────────────── */
+.notebook-binding-edge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 18px;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+  background: linear-gradient(
+    to left,
+    rgba(0, 0, 0, 0.13) 0%,
+    rgba(0, 0, 0, 0.06) 40%,
+    transparent 100%
+  );
+}
+
 /* ── Page number indicator ────────────────────────────────────── */
 .notebook-page-indicator {
   position: absolute;
@@ -89,24 +124,11 @@
   letter-spacing: 0.04em;
 }
 
-/* ── Responsive scaling ────────────────────────────────────────── */
-@media (max-width: 1180px) {
-  .notebook-spread {
-    transform: translate(-50%, calc(-50% - 28px)) scale(0.75);
-  }
-}
-
-@media (max-width: 900px) {
-  .notebook-spread {
-    transform: translate(-50%, calc(-50% - 28px)) scale(0.58);
-  }
-}
-
+/* ── Responsive: single-page on narrow screens ─────────────────── */
+/* transform/scale is handled by JS (--notebook-scale CSS variable) */
 @media (max-width: 700px) {
-  /* Single-page mode on phones: hide left page, show right only */
   .notebook-spread {
     width: 560px;
-    transform: translate(-50%, calc(-50% - 28px)) scale(0.9);
   }
   .notebook-page-left,
   .notebook-spine {

@@ -23,13 +23,17 @@ interface ToolbarProps {
   onExportSpreadJpg: () => void
   onExportAllPdf: () => void
   onSaveProjectFile: () => void
-  onLoadProjectFile: () => void
+  onLoadProjectFile: (file: File) => void
   selectionActive: boolean
   onCut: () => void
   onCopy: () => void
   onPaste: () => void
   onDeleteSelection: () => void
   hasClipboard: boolean
+  canUndo: boolean
+  canRedo: boolean
+  onUndo: () => void
+  onRedo: () => void
 }
 
 export default function Toolbar({
@@ -52,6 +56,10 @@ export default function Toolbar({
   onPaste,
   onDeleteSelection,
   hasClipboard,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
 }: ToolbarProps) {
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [showColorPicker, setShowColorPicker] = useState(false)
@@ -69,6 +77,14 @@ export default function Toolbar({
       className="toolbar"
       onPointerDown={e => e.stopPropagation()}
     >
+      {/* Undo / Redo */}
+      <div className="toolbar-group">
+        <button className="tool-btn" onClick={onUndo} disabled={!canUndo} title="元に戻す (Ctrl+Z)">↩</button>
+        <button className="tool-btn" onClick={onRedo} disabled={!canRedo} title="やり直す (Ctrl+Shift+Z)">↪</button>
+      </div>
+
+      <div className="toolbar-sep" />
+
       {/* Tool buttons */}
       <div className="toolbar-group">
         <button
@@ -155,11 +171,11 @@ export default function Toolbar({
         </>
       )}
 
-      {/* Page navigation */}
+      {/* Page navigation — 右綴じ: 前へ=▶(右方向/表紙側)、次へ=◀(左方向/奥側) */}
       <div className="toolbar-group">
-        <button className="nav-btn" onClick={onPrevSpread} disabled={currentSpread === 0} title="前のページ">◀</button>
+        <button className="nav-btn" onClick={onNextSpread} disabled={currentSpread === totalSpreads - 1} title="次のページ（左方向）">◀</button>
         <span className="spread-label">{currentSpread + 1} / {totalSpreads}</span>
-        <button className="nav-btn" onClick={onNextSpread} disabled={currentSpread === totalSpreads - 1} title="次のページ">▶</button>
+        <button className="nav-btn" onClick={onPrevSpread} disabled={currentSpread === 0} title="前のページ（右方向）">▶</button>
         <button className="nav-btn add-btn" onClick={onAddSpread} title="スプレッド追加">＋</button>
       </div>
 
@@ -167,7 +183,7 @@ export default function Toolbar({
 
       {/* Save */}
       <div className="toolbar-group">
-        <button className="tool-btn save-btn" onClick={onSave} title="保存">
+        <button className="tool-btn save-btn" onClick={onSave} title="プロジェクトをファイルに保存">
           <span style={{ color: saveColor, marginRight: 4 }}>{saveIndicator}</span>保存
         </button>
       </div>
@@ -195,7 +211,11 @@ export default function Toolbar({
           type="file"
           accept=".namenote,application/json"
           style={{ display: 'none' }}
-          onChange={e => { if (e.target.files?.[0]) { onLoadProjectFile(); e.target.value = '' } }}
+          onChange={e => {
+            const file = e.target.files?.[0]
+            if (file) onLoadProjectFile(file)
+            e.target.value = ''
+          }}
         />
       </div>
     </div>

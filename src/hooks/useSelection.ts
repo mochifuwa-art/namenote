@@ -28,6 +28,7 @@ interface UseSelectionOptions {
   rightCanvasRef: React.RefObject<HTMLCanvasElement | null>
   deskCanvasRef: React.RefObject<HTMLCanvasElement | null>
   enabled: boolean
+  onBeforeEdit?: (target: DrawTarget) => void
   onSelectionChange: (hasSelection: boolean) => void
 }
 
@@ -40,6 +41,7 @@ export function useSelection({
   rightCanvasRef,
   deskCanvasRef,
   enabled,
+  onBeforeEdit,
   onSelectionChange,
 }: UseSelectionOptions) {
   const phaseRef = useRef<Phase>('idle')
@@ -206,6 +208,7 @@ export function useSelection({
     }
 
     // Erase from source
+    onBeforeEdit?.(target)
     const sctx = srcCanvas.getContext('2d')!
     sctx.save()
     sctx.globalCompositeOperation = 'destination-out'
@@ -258,10 +261,14 @@ export function useSelection({
     const target = selectionTargetRef.current!
     const srcCanvas = getTargetCanvas(target)
     if (!srcCanvas || pts.length < 3) { clearSelection(); return }
+    onBeforeEdit?.(target)
     const sctx = srcCanvas.getContext('2d')!
     sctx.save()
-    sctx.fillStyle = '#fffef8'
-    sctx.globalCompositeOperation = 'source-over'
+    // Use destination-out to punch transparent holes (same as cut).
+    // Page canvases show their CSS backgroundColor (#fffef8) through transparent pixels.
+    // Desk canvas shows the body background through transparent pixels.
+    sctx.globalCompositeOperation = 'destination-out'
+    sctx.fillStyle = 'black'
     sctx.beginPath()
     sctx.moveTo(pts[0].x, pts[0].y)
     for (let i = 1; i < pts.length; i++) sctx.lineTo(pts[i].x, pts[i].y)
@@ -284,6 +291,7 @@ export function useSelection({
     if (!target) return
     const destCanvas = getTargetCanvas(target)
     if (!destCanvas) return
+    onBeforeEdit?.(target)
     const dctx = destCanvas.getContext('2d')!
     const cx = pasteCanvasCoordRef.current.x - cb.width / 2
     const cy = pasteCanvasCoordRef.current.y - cb.height / 2
