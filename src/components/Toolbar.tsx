@@ -24,6 +24,7 @@ interface ToolbarProps {
   onSaveProjectFile: () => void
   onLoadProjectFile: (file: File) => void
   onImportPdf: (file: File) => void
+  onResetNotebook: () => void
   navLabel: string
   prevDisabled: boolean
   nextDisabled: boolean
@@ -54,6 +55,7 @@ export default function Toolbar({
   onSaveProjectFile,
   onLoadProjectFile,
   onImportPdf,
+  onResetNotebook,
   navLabel,
   prevDisabled,
   nextDisabled,
@@ -236,6 +238,11 @@ export default function Toolbar({
               <button onClick={() => { fileInputRef.current?.click(); setShowExportMenu(false) }}>プロジェクトを開く…</button>
               <div className="export-sep" />
               <button onClick={() => { pdfInputRef.current?.click(); setShowExportMenu(false) }}>PDFを読み込む…</button>
+              <div className="export-sep" />
+              <button
+                onClick={() => { setShowExportMenu(false); onResetNotebook() }}
+                style={{ color: '#f87171' }}
+              >ノートを初期化…</button>
             </div>
           </>,
           document.body

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import type { DrawingTool, SaveStatus } from './types'
 import { usePageStore } from './hooks/usePageStore'
 import { useDrawing } from './hooks/useDrawing'
@@ -252,7 +253,7 @@ export default function App() {
 
   // ── Pointer event dispatcher ─────────────────────────────────────
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
-    if (tool.type === 'lasso') {
+    if (tool.type === 'lasso' || selection.isPasting()) {
       selection.handlePointerDown(e)
     } else {
       drawing.handlePointerDown(e)
@@ -260,7 +261,7 @@ export default function App() {
   }, [tool.type, selection, drawing])
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
-    if (tool.type === 'lasso') {
+    if (tool.type === 'lasso' || selection.isPasting()) {
       selection.handlePointerMove(e)
     } else {
       drawing.handlePointerMove(e)
@@ -268,7 +269,7 @@ export default function App() {
   }, [tool.type, selection, drawing])
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
-    if (tool.type === 'lasso') {
+    if (tool.type === 'lasso' || selection.isPasting()) {
       selection.handlePointerUp(e)
     } else {
       drawing.handlePointerUp(e)
@@ -398,6 +399,24 @@ export default function App() {
     selection.cancelPaste()
   }
 
+  const handleResetNotebook = useCallback(() => {
+    if (!window.confirm('ノートのすべてのデータを削除して初期化します。この操作は元に戻せません。\n続けますか？')) return
+    // Clear all namenote_* localStorage keys
+    const keys = Object.keys(localStorage).filter(k => k.startsWith('namenote'))
+    keys.forEach(k => localStorage.removeItem(k))
+    pageStore.setSpreadCount(1)
+    // Clear visible canvases
+    const clear = (c: HTMLCanvasElement | null) => { if (c) c.getContext('2d')!.clearRect(0, 0, c.width, c.height) }
+    clear(deskCanvasRef.current)
+    clear(leftCanvasRef.current)
+    clear(rightCanvasRef.current)
+    setCurrentSpread(0)
+    setTotalSpreads(1)
+    setMobileSide('R')
+    setSaveStatus('saved')
+    showToast('ノートを初期化しました')
+  }, [pageStore, showToast])
+
   const cursor = tool.type === 'eraser' ? 'cell' : tool.type === 'lasso' ? 'crosshair' : 'crosshair'
 
   return (
@@ -444,22 +463,23 @@ export default function App() {
         onPointerCancel={handlePointerUp}
       />
 
-      {/* Layer 5: Paste confirm/cancel bar */}
-      {isPasting && (
-        <div style={{
-          position: 'fixed',
-          bottom: 'calc(72px + env(safe-area-inset-bottom, 0px))',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          zIndex: 102,
-          display: 'flex',
-          gap: '8px',
-          background: 'rgba(30,30,30,0.88)',
-          borderRadius: '10px',
-          padding: '8px 14px',
-          backdropFilter: 'blur(8px)',
-          WebkitBackdropFilter: 'blur(8px)',
-        }}>
+      {/* Layer 5: Paste confirm/cancel bar — portal to body to escape stacking contexts */}
+      {isPasting && createPortal(
+        <div
+          onPointerDown={e => e.stopPropagation()}
+          style={{
+            position: 'fixed',
+            bottom: 'calc(72px + env(safe-area-inset-bottom, 0px))',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 300,
+            display: 'flex',
+            gap: '8px',
+            background: 'rgba(30,30,30,0.92)',
+            borderRadius: '10px',
+            padding: '8px 14px',
+            boxShadow: '0 4px 24px rgba(0,0,0,0.5)',
+          }}>
           <button
             onClick={handleConfirmPaste}
             style={{
@@ -476,7 +496,8 @@ export default function App() {
               cursor: 'pointer',
             }}
           >キャンセル</button>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Layer 6: Toolbar */}
@@ -496,6 +517,7 @@ export default function App() {
         onSaveProjectFile={handleSaveProjectFile}
         onLoadProjectFile={handleLoadProjectFile}
         onImportPdf={handleImportPdf}
+        onResetNotebook={handleResetNotebook}
         selectionActive={selectionActive}
         onCut={handleCut}
         onCopy={handleCopy}
