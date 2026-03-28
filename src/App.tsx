@@ -360,18 +360,34 @@ export default function App() {
         (current, total) => showToast(`PDF読み込み中… ${current}/${total}ページ`)
       )
       saveNow()
-      // 右綴じマッピング: PDF p1→スプレッド0右, p2→スプレッド0左, p3→スプレッド1右…
-      const spreadsNeeded = Math.ceil(pages.length / 2)
+      // 右綴じレイアウト（1ページ目は左始まり）:
+      //   PDF p1 → スプレッド0 左
+      //   PDF p2 → スプレッド1 右,  PDF p3 → スプレッド1 左
+      //   PDF p4 → スプレッド2 右,  PDF p5 → スプレッド2 左, …
+      const spreadsNeeded = Math.ceil((pages.length + 1) / 2)
+
+      // 既存スプレッドデータをクリア（旧データが残らないように）
+      const oldCount = pageStore.getSpreadCount()
+      for (let i = 0; i < oldCount; i++) {
+        localStorage.removeItem(`namenote_page_${i}_L`)
+        localStorage.removeItem(`namenote_page_${i}_R`)
+      }
+
       for (let i = 0; i < pages.length; i++) {
-        const spreadIndex = Math.floor(i / 2)
-        const side = i % 2 === 0 ? 'R' : 'L'
+        let spreadIndex: number, side: 'L' | 'R'
+        if (i === 0) {
+          spreadIndex = 0; side = 'L'
+        } else {
+          spreadIndex = Math.ceil(i / 2)
+          side = i % 2 === 1 ? 'R' : 'L'
+        }
         localStorage.setItem(`namenote_page_${spreadIndex}_${side}`, pages[i])
       }
       pageStore.setSpreadCount(spreadsNeeded)
       setTotalSpreads(spreadsNeeded)
       setCurrentSpread(0)
       pageStore.loadSpread(0, leftCanvasRef.current, rightCanvasRef.current)
-      showToast(`PDF読み込み完了：${pages.length}ページ`)
+      showToast(`PDF読み込み完了：${pages.length}ページ（${spreadsNeeded}スプレッド）`)
     } catch (e) {
       showToast('PDF読み込みに失敗しました')
       console.error(e)

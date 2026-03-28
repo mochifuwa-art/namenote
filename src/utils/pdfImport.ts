@@ -4,7 +4,7 @@ import pdfjsWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerUrl
 
 /**
- * Import a PDF file and render each page to a data URL (PNG).
+ * Import a PDF file and render each page to a data URL (JPEG).
  * Pages are returned in order: index 0 = PDF page 1, index 1 = PDF page 2, ...
  * The caller maps them to notebook pages in right-to-left order.
  *
@@ -47,7 +47,8 @@ export async function importPdfPages(
       background: '#fffef8',
     }).promise
 
-    pages.push(canvas.toDataURL('image/png'))
+    // JPEG to keep localStorage usage well within the ~5 MB limit
+    pages.push(canvas.toDataURL('image/jpeg', 0.92))
     onProgress?.(i, pdf.numPages)
   }
 
