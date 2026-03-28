@@ -35,6 +35,9 @@ interface ToolbarProps {
   onPaste: () => void
   onDeleteSelection: () => void
   hasClipboard: boolean
+  isPasting: boolean
+  onConfirmPaste: () => void
+  onCancelPaste: () => void
   canUndo: boolean
   canRedo: boolean
   onUndo: () => void
@@ -66,6 +69,9 @@ export default function Toolbar({
   onPaste,
   onDeleteSelection,
   hasClipboard,
+  isPasting,
+  onConfirmPaste,
+  onCancelPaste,
   canUndo,
   canRedo,
   onUndo,
@@ -183,8 +189,30 @@ export default function Toolbar({
 
       <div className="toolbar-sep" />
 
-      {/* Selection actions (visible when lasso is active) */}
-      {tool.type === 'lasso' && (
+      {/* ペースト確定/キャンセル（ペースト中は常に最優先表示） */}
+      {isPasting && (
+        <>
+          <div className="toolbar-sep" />
+          <div className="toolbar-group">
+            <button
+              className="tool-btn"
+              onClick={onConfirmPaste}
+              style={{ background: 'rgba(59,130,246,0.85)', color: '#fff', fontWeight: 700, padding: '0 14px', fontSize: 13 }}
+              title="ペーストを確定"
+            >確定</button>
+            <button
+              className="tool-btn"
+              onClick={onCancelPaste}
+              style={{ color: 'rgba(248,113,113,0.9)', fontSize: 13 }}
+              title="ペーストをキャンセル"
+            >✕ キャンセル</button>
+          </div>
+          <div className="toolbar-sep" />
+        </>
+      )}
+
+      {/* Selection actions (visible when lasso is active and NOT pasting) */}
+      {tool.type === 'lasso' && !isPasting && (
         <>
           <div className="toolbar-group">
             <button className="tool-btn" onClick={onCut} disabled={!selectionActive} title="切り取り (Ctrl+X)">✂️</button>

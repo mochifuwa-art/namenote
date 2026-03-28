@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { createPortal } from 'react-dom'
 import type { DrawingTool, SaveStatus } from './types'
 import { usePageStore } from './hooks/usePageStore'
 import { useDrawing } from './hooks/useDrawing'
@@ -186,6 +185,23 @@ export default function App() {
       pageStore.loadSpread(currentSpread, leftCanvasRef.current, rightCanvasRef.current)
     }
   }, [saveNow, pageStore, currentSpread])
+
+  // ── Overview: delete spread ──────────────────────────────────────
+  const handleDeleteSpread = useCallback((at: number) => {
+    if (totalSpreads <= 1) return
+    saveNow()
+    pageStore.deleteSpreadAt(at)
+    const newTotal = totalSpreads - 1
+    setTotalSpreads(newTotal)
+    if (at < currentSpread) {
+      setCurrentSpread(currentSpread - 1)
+    } else if (at === currentSpread) {
+      const newCurrent = Math.min(currentSpread, newTotal - 1)
+      setCurrentSpread(newCurrent)
+      setMobileSide('R')
+      pageStore.loadSpread(newCurrent, leftCanvasRef.current, rightCanvasRef.current)
+    }
+  }, [saveNow, pageStore, currentSpread, totalSpreads])
 
   // ── Overview: insert blank spread ────────────────────────────────
   const handleInsertAt = useCallback((at: number) => {
@@ -463,44 +479,7 @@ export default function App() {
         onPointerCancel={handlePointerUp}
       />
 
-      {/* Layer 5: Paste confirm/cancel bar — portal to body to escape stacking contexts */}
-      {isPasting && createPortal(
-        <div
-          onPointerDown={e => e.stopPropagation()}
-          style={{
-            position: 'fixed',
-            bottom: 'calc(72px + env(safe-area-inset-bottom, 0px))',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            zIndex: 300,
-            display: 'flex',
-            gap: '8px',
-            background: 'rgba(30,30,30,0.92)',
-            borderRadius: '10px',
-            padding: '8px 14px',
-            boxShadow: '0 4px 24px rgba(0,0,0,0.5)',
-          }}>
-          <button
-            onClick={handleConfirmPaste}
-            style={{
-              background: '#3b82f6', color: '#fff', border: 'none',
-              borderRadius: '6px', padding: '7px 20px', fontSize: '15px',
-              fontWeight: 'bold', cursor: 'pointer',
-            }}
-          >確定</button>
-          <button
-            onClick={handleCancelPaste}
-            style={{
-              background: 'rgba(255,255,255,0.15)', color: '#fff', border: 'none',
-              borderRadius: '6px', padding: '7px 20px', fontSize: '15px',
-              cursor: 'pointer',
-            }}
-          >キャンセル</button>
-        </div>,
-        document.body
-      )}
-
-      {/* Layer 6: Toolbar */}
+      {/* Layer 5: Toolbar */}
       <Toolbar
         tool={tool}
         onToolChange={t => { setTool(t); if (t.type !== 'lasso') selection.clearSelection() }}
@@ -518,6 +497,9 @@ export default function App() {
         onLoadProjectFile={handleLoadProjectFile}
         onImportPdf={handleImportPdf}
         onResetNotebook={handleResetNotebook}
+        isPasting={isPasting}
+        onConfirmPaste={handleConfirmPaste}
+        onCancelPaste={handleCancelPaste}
         selectionActive={selectionActive}
         onCut={handleCut}
         onCopy={handleCopy}
@@ -541,6 +523,7 @@ export default function App() {
         onNavigate={idx => { goToSpread(idx) }}
         onReorder={handleReorder}
         onInsertAt={handleInsertAt}
+        onDeleteSpread={handleDeleteSpread}
         getThumbnail={pageStore.getThumbnail}
       />
 

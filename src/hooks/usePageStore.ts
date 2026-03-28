@@ -152,6 +152,24 @@ export function usePageStore() {
    * Insert a blank spread at `at` (0-based).
    * Shifts all spreads from `at` onward one position to the right.
    */
+  const deleteSpreadAt = useCallback((at: number) => {
+    const count = spreadCountRef.current
+    if (count <= 1) return  // 最後の1スプレッドは削除不可
+    // at 以降を1つ前にシフト
+    for (let i = at; i < count - 1; i++) {
+      const L = localStorage.getItem(pageKey(i + 1, 'L'))
+      const R = localStorage.getItem(pageKey(i + 1, 'R'))
+      if (L) localStorage.setItem(pageKey(i, 'L'), L)
+      else localStorage.removeItem(pageKey(i, 'L'))
+      if (R) localStorage.setItem(pageKey(i, 'R'), R)
+      else localStorage.removeItem(pageKey(i, 'R'))
+    }
+    // 末尾の空きスロットを削除
+    localStorage.removeItem(pageKey(count - 1, 'L'))
+    localStorage.removeItem(pageKey(count - 1, 'R'))
+    setSpreadCount(count - 1)
+  }, [setSpreadCount])
+
   const insertSpreadAt = useCallback((at: number) => {
     const count = spreadCountRef.current
     for (let i = count - 1; i >= at; i--) {
@@ -202,6 +220,7 @@ export function usePageStore() {
     getThumbnail,
     reorderSpreads,
     insertSpreadAt,
+    deleteSpreadAt,
     loadAllFromProjectData,
   }
 }
