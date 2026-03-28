@@ -107,6 +107,8 @@ export function useSelection({
   const resizeInitScaleRef = useRef(1)
   const rotStartAngleRef = useRef(0)
   const rotStartValueRef = useRef(0)
+  const isPasteDraggingRef = useRef(false)  // ポインタダウン中のみtrue（ホバーでは追従しない）
+  const isCutPasteRef = useRef(false)  // 切り取り/移動由来のペーストならtrue（キャンセル時に元位置に戻す）
 
   const getDrawTarget = useCallback((clientX: number, clientY: number): { target: DrawTarget; rect: DOMRect | null; canvas: HTMLCanvasElement | null } => {
     const leftRect = leftCanvasRef.current?.getBoundingClientRect() ?? null
@@ -323,6 +325,7 @@ export function useSelection({
     // 旧形式（クリーム背景）からコピーした場合、背景色を透明化
     if (hasOpaqueBackground(srcCanvas)) stripOpaqueBackground(tempCanvas)
 
+    isCutPasteRef.current = true
     clipboardRef.current = {
       canvas: tempCanvas,
       width: Math.ceil(bb.w),
@@ -372,6 +375,7 @@ export function useSelection({
     // 旧形式（クリーム背景）からコピーした場合、背景色を透明化
     if (hasOpaqueBackground(srcCanvas)) stripOpaqueBackground(tempCanvas)
 
+    isCutPasteRef.current = false
     clipboardRef.current = {
       canvas: tempCanvas,
       width: Math.ceil(bb.w),
@@ -417,6 +421,7 @@ export function useSelection({
     }
     pasteScaleRef.current = 1
     pasteRotationRef.current = 0
+    isPasteDraggingRef.current = false
     phaseRef.current = 'pasting'
     onPasteChange?.(true)
     startMarchingAnts()
@@ -458,6 +463,7 @@ export function useSelection({
     pasteCanvasCoordRef.current = { x: bb.minX + bb.w / 2, y: bb.minY + bb.h / 2 }
     pasteScaleRef.current = 1
     pasteRotationRef.current = 0
+    isPasteDraggingRef.current = false
     phaseRef.current = 'pasting'
     onPasteChange?.(true)
     startMarchingAnts()
@@ -500,7 +506,8 @@ export function useSelection({
         }
       }
 
-      // ハンドル以外: ドラッグで移動できるよう位置を更新（確定は確定ボタンで行う）
+      // ハンドル以外: ドラッグ開始（ポインタダウン中だけ追従）
+      isPasteDraggingRef.current = true
       pasteTargetRef.current = target
       pasteTargetRectRef.current = rect
       const coords = target.kind === 'desk'
@@ -558,15 +565,17 @@ export function useSelection({
         pasteRotationRef.current = rotStartValueRef.current + (angle - rotStartAngleRef.current)
         return
       }
-      // ペーストプレビューをポインタに追従
-      const { target, rect, canvas } = getDrawTarget(e.clientX, e.clientY)
-      if (canvas && rect) {
-        pasteTargetRef.current = target
-        pasteTargetRectRef.current = rect
-        const coords = target.kind === 'desk'
-          ? { x: e.clientX, y: e.clientY }
-          : toCanvasCoords(e.clientX, e.clientY, rect, canvas)
-        pasteCanvasCoordRef.current = coords
+      // ドラッグ中のみペースト位置を更新（ホバーでは追従しない）
+      if (isPasteDraggingRef.current) {
+        const { target, rect, canvas } = getDrawTarget(e.clientX, e.clientY)
+        if (canvas && rect) {
+          pasteTargetRef.current = target
+          pasteTargetRectRef.current = rect
+          const coords = target.kind === 'desk'
+            ? { x: e.clientX, y: e.clientY }
+            : toCanvasCoords(e.clientX, e.clientY, rect, canvas)
+          pasteCanvasCoordRef.current = coords
+        }
       }
       return
     }
@@ -597,8 +606,9 @@ export function useSelection({
     if (!enabled && phaseRef.current !== 'pasting') return
     overlayDivRef.current?.releasePointerCapture(e.pointerId)
 
-    if (phaseRef.current === 'pasting' && activeHandleRef.current !== null) {
+    if (phaseRef.current === 'pasting') {
       activeHandleRef.current = null
+      isPasteDraggingRef.current = false
       return
     }
 
@@ -633,6 +643,34 @@ export function useSelection({
     return () => window.removeEventListener('keydown', onKey)
   }, [enabled, clearSelection, deleteSelection, cutSelection, copySelection, startPaste])
 
+  /** ペーストをキャンセルして選択状態に戻る。切り取り/移動の場合は元の位置にコンテンツを復元する */
+  const cancelPaste = useCallback(() => {
+    if (phaseRef.current !== 'pasting') return
+    const cb = clipboardRef.current
+    if (!cb) { clearSelection(); return }
+
+    // 切り取り/移動由来なら元キャンバスに内容を戻す
+    if (isCutPasteRef.current) {
+      const srcCanvas = getTargetCanvas(cb.sourceTarget)
+      if (srcCanvas) {
+        onBeforeEdit?.(cb.sourceTarget)
+        const sctx = srcCanvas.getContext('2d')!
+        sctx.drawImage(cb.canvas, cb.sourceX, cb.sourceY)
+      }
+    }
+
+    // 選択状態を復元
+    lassoPointsRef.current = [...cb.path]
+    selectionTargetRef.current = cb.sourceTarget
+    selectionTargetRectRef.current = getTargetCanvas(cb.sourceTarget)?.getBoundingClientRect() ?? null
+    isPasteDraggingRef.current = false
+    phaseRef.current = 'selected'
+    onSelectionChange(true)
+    onPasteChange?.(false)
+    stopMarchingAnts()
+    startMarchingAnts()
+  }, [clearSelection, getTargetCanvas, onBeforeEdit, onSelectionChange, onPasteChange, stopMarchingAnts, startMarchingAnts])
+
   return {
     handlePointerDown,
     handlePointerMove,
@@ -644,7 +682,7 @@ export function useSelection({
     startPaste,
     startMove,
     commitPaste,
-    cancelPaste: clearSelection,
+    cancelPaste,
     hasClipboard: () => !!clipboardRef.current,
     isSelectionActive: () => phaseRef.current === 'selected' || phaseRef.current === 'moving',
     isPasting: () => phaseRef.current === 'pasting',
