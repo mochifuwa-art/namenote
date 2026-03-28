@@ -34,21 +34,17 @@ export async function importPdfPages(
     const canvas = document.createElement('canvas')
     canvas.width = pageWidth
     canvas.height = pageHeight
-    const ctx = canvas.getContext('2d')!
-
-    // White notebook background
-    ctx.fillStyle = '#fffef8'
-    ctx.fillRect(0, 0, pageWidth, pageHeight)
 
     // Center the rendered page within the canvas
     const offsetX = (pageWidth - scaledViewport.width) / 2
     const offsetY = (pageHeight - scaledViewport.height) / 2
 
+    // pdfjs-dist v5: use `canvas` as primary parameter (canvasContext is legacy)
     await page.render({
-      canvasContext: ctx,
       canvas,
       viewport: scaledViewport,
       transform: [1, 0, 0, 1, offsetX, offsetY],
+      background: '#fffef8',
     }).promise
 
     pages.push(canvas.toDataURL('image/png'))
