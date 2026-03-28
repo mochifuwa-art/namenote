@@ -107,6 +107,7 @@ export function useSelection({
   const resizeInitScaleRef = useRef(1)
   const rotStartAngleRef = useRef(0)
   const rotStartValueRef = useRef(0)
+  const isPasteDraggingRef = useRef(false)  // ポインタダウン中のみtrue（ホバーでは追従しない）
 
   const getDrawTarget = useCallback((clientX: number, clientY: number): { target: DrawTarget; rect: DOMRect | null; canvas: HTMLCanvasElement | null } => {
     const leftRect = leftCanvasRef.current?.getBoundingClientRect() ?? null
@@ -417,6 +418,7 @@ export function useSelection({
     }
     pasteScaleRef.current = 1
     pasteRotationRef.current = 0
+    isPasteDraggingRef.current = false
     phaseRef.current = 'pasting'
     onPasteChange?.(true)
     startMarchingAnts()
@@ -458,6 +460,7 @@ export function useSelection({
     pasteCanvasCoordRef.current = { x: bb.minX + bb.w / 2, y: bb.minY + bb.h / 2 }
     pasteScaleRef.current = 1
     pasteRotationRef.current = 0
+    isPasteDraggingRef.current = false
     phaseRef.current = 'pasting'
     onPasteChange?.(true)
     startMarchingAnts()
@@ -500,7 +503,8 @@ export function useSelection({
         }
       }
 
-      // ハンドル以外: ドラッグで移動できるよう位置を更新（確定は確定ボタンで行う）
+      // ハンドル以外: ドラッグ開始（ポインタダウン中だけ追従）
+      isPasteDraggingRef.current = true
       pasteTargetRef.current = target
       pasteTargetRectRef.current = rect
       const coords = target.kind === 'desk'
@@ -558,15 +562,17 @@ export function useSelection({
         pasteRotationRef.current = rotStartValueRef.current + (angle - rotStartAngleRef.current)
         return
       }
-      // ペーストプレビューをポインタに追従
-      const { target, rect, canvas } = getDrawTarget(e.clientX, e.clientY)
-      if (canvas && rect) {
-        pasteTargetRef.current = target
-        pasteTargetRectRef.current = rect
-        const coords = target.kind === 'desk'
-          ? { x: e.clientX, y: e.clientY }
-          : toCanvasCoords(e.clientX, e.clientY, rect, canvas)
-        pasteCanvasCoordRef.current = coords
+      // ドラッグ中のみペースト位置を更新（ホバーでは追従しない）
+      if (isPasteDraggingRef.current) {
+        const { target, rect, canvas } = getDrawTarget(e.clientX, e.clientY)
+        if (canvas && rect) {
+          pasteTargetRef.current = target
+          pasteTargetRectRef.current = rect
+          const coords = target.kind === 'desk'
+            ? { x: e.clientX, y: e.clientY }
+            : toCanvasCoords(e.clientX, e.clientY, rect, canvas)
+          pasteCanvasCoordRef.current = coords
+        }
       }
       return
     }
@@ -597,8 +603,9 @@ export function useSelection({
     if (!enabled && phaseRef.current !== 'pasting') return
     overlayDivRef.current?.releasePointerCapture(e.pointerId)
 
-    if (phaseRef.current === 'pasting' && activeHandleRef.current !== null) {
+    if (phaseRef.current === 'pasting') {
       activeHandleRef.current = null
+      isPasteDraggingRef.current = false
       return
     }
 
