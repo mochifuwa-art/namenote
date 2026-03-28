@@ -325,7 +325,7 @@ export function useSelection({
     // 旧形式（クリーム背景）からコピーした場合、背景色を透明化
     if (hasOpaqueBackground(srcCanvas)) stripOpaqueBackground(tempCanvas)
 
-    isCutPasteRef.current = true
+    isCutPasteRef.current = false  // 単体の切り取りは確定操作。キャンセルしても戻さない
     clipboardRef.current = {
       canvas: tempCanvas,
       width: Math.ceil(bb.w),
@@ -457,6 +457,7 @@ export function useSelection({
     const bb = getBoundingBox(pts)
 
     cutSelection()
+    isCutPasteRef.current = true  // 移動は切り取り+貼り付けを1操作として扱う。キャンセル時に元位置に戻す
 
     pasteTargetRef.current = target
     pasteTargetRectRef.current = rect
@@ -629,11 +630,43 @@ export function useSelection({
     }
   }, [enabled, clearSelection, onSelectionChange, startMarchingAnts, overlayDivRef])
 
+  /** ペーストをキャンセル。
+   *  移動操作（startMove）由来: 元位置にコンテンツを復元して選択状態に戻る。
+   *  切り取り単体/コピー由来: 浮動プレビューを破棄してアイドルに戻る（他ペイントソフトの標準挙動）。
+   */
+  const cancelPaste = useCallback(() => {
+    if (phaseRef.current !== 'pasting') return
+    const cb = clipboardRef.current
+    if (!cb) { clearSelection(); return }
+
+    if (isCutPasteRef.current) {
+      // 移動操作: 元キャンバスにコンテンツを戻して選択状態を復元
+      const srcCanvas = getTargetCanvas(cb.sourceTarget)
+      if (srcCanvas) {
+        onBeforeEdit?.(cb.sourceTarget)
+        const sctx = srcCanvas.getContext('2d')!
+        sctx.drawImage(cb.canvas, cb.sourceX, cb.sourceY)
+      }
+      lassoPointsRef.current = [...cb.path]
+      selectionTargetRef.current = cb.sourceTarget
+      selectionTargetRectRef.current = getTargetCanvas(cb.sourceTarget)?.getBoundingClientRect() ?? null
+      isPasteDraggingRef.current = false
+      phaseRef.current = 'selected'
+      onSelectionChange(true)
+      onPasteChange?.(false)
+      stopMarchingAnts()
+      startMarchingAnts()
+    } else {
+      // 切り取り単体 or コピー: 浮動プレビューを破棄してアイドルへ
+      clearSelection()
+    }
+  }, [clearSelection, getTargetCanvas, onBeforeEdit, onSelectionChange, onPasteChange, stopMarchingAnts, startMarchingAnts])
+
   // Keyboard shortcuts
   useEffect(() => {
     if (!enabled) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { clearSelection(); return }
+      if (e.key === 'Escape') { if (phaseRef.current === 'pasting') cancelPaste(); else clearSelection(); return }
       if (e.key === 'Delete' || e.key === 'Backspace') { deleteSelection(); return }
       if ((e.ctrlKey || e.metaKey) && e.key === 'x') { e.preventDefault(); cutSelection(); return }
       if ((e.ctrlKey || e.metaKey) && e.key === 'c') { e.preventDefault(); copySelection(); return }
@@ -641,35 +674,7 @@ export function useSelection({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [enabled, clearSelection, deleteSelection, cutSelection, copySelection, startPaste])
-
-  /** ペーストをキャンセルして選択状態に戻る。切り取り/移動の場合は元の位置にコンテンツを復元する */
-  const cancelPaste = useCallback(() => {
-    if (phaseRef.current !== 'pasting') return
-    const cb = clipboardRef.current
-    if (!cb) { clearSelection(); return }
-
-    // 切り取り/移動由来なら元キャンバスに内容を戻す
-    if (isCutPasteRef.current) {
-      const srcCanvas = getTargetCanvas(cb.sourceTarget)
-      if (srcCanvas) {
-        onBeforeEdit?.(cb.sourceTarget)
-        const sctx = srcCanvas.getContext('2d')!
-        sctx.drawImage(cb.canvas, cb.sourceX, cb.sourceY)
-      }
-    }
-
-    // 選択状態を復元
-    lassoPointsRef.current = [...cb.path]
-    selectionTargetRef.current = cb.sourceTarget
-    selectionTargetRectRef.current = getTargetCanvas(cb.sourceTarget)?.getBoundingClientRect() ?? null
-    isPasteDraggingRef.current = false
-    phaseRef.current = 'selected'
-    onSelectionChange(true)
-    onPasteChange?.(false)
-    stopMarchingAnts()
-    startMarchingAnts()
-  }, [clearSelection, getTargetCanvas, onBeforeEdit, onSelectionChange, onPasteChange, stopMarchingAnts, startMarchingAnts])
+  }, [enabled, cancelPaste, clearSelection, deleteSelection, cutSelection, copySelection, startPaste])
 
   return {
     handlePointerDown,
