@@ -21,7 +21,6 @@ function getBoundingBox(pts: Point[]) {
   return { minX, minY, maxX, maxY, w: maxX - minX, h: maxY - minY }
 }
 
-/** 点 (px,py) を中心 (cx,cy) 周りに angle ラジアン回転した座標を返す */
 function rotatePoint(px: number, py: number, cx: number, cy: number, angle: number): Point {
   if (angle === 0) return { x: px, y: py }
   const cos = Math.cos(angle)
@@ -33,6 +32,28 @@ function rotatePoint(px: number, py: number, cx: number, cy: number, angle: numb
 
 function dist(x1: number, y1: number, x2: number, y2: number) {
   return Math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
+}
+
+/** キャンバスの4隅がクリーム色なら旧形式と判定 */
+function hasOpaqueBackground(canvas: HTMLCanvasElement): boolean {
+  const ctx = canvas.getContext('2d')!
+  const w = canvas.width, h = canvas.height
+  const corners = [[0, 0], [w - 1, 0], [0, h - 1], [w - 1, h - 1]] as const
+  return corners.every(([x, y]) => {
+    const p = ctx.getImageData(x, y, 1, 1).data
+    return p[0] >= 240 && p[1] >= 240 && p[2] >= 220 && p[3] > 200
+  })
+}
+
+/** キャンバスからクリーム色ピクセルを透明化（旧背景の除去） */
+function stripOpaqueBackground(canvas: HTMLCanvasElement) {
+  const ctx = canvas.getContext('2d')!
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+  const d = imageData.data
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i] >= 240 && d[i + 1] >= 240 && d[i + 2] >= 220 && d[i + 3] > 200) d[i + 3] = 0
+  }
+  ctx.putImageData(imageData, 0, 0)
 }
 
 const HANDLE_HIT_R = 18   // タッチ対応の広いヒット半径 (px)
@@ -48,6 +69,7 @@ interface UseSelectionOptions {
   enabled: boolean
   onBeforeEdit?: (target: DrawTarget) => void
   onSelectionChange: (hasSelection: boolean) => void
+  onPasteChange?: (isPasting: boolean) => void
 }
 
 type Phase = 'idle' | 'drawing-lasso' | 'selected' | 'moving' | 'pasting'
@@ -62,6 +84,7 @@ export function useSelection({
   enabled,
   onBeforeEdit,
   onSelectionChange,
+  onPasteChange,
 }: UseSelectionOptions) {
   const phaseRef = useRef<Phase>('idle')
   const lassoPointsRef = useRef<Point[]>([])
@@ -273,7 +296,8 @@ export function useSelection({
     selectionTargetRectRef.current = null
     stopMarchingAnts()
     onSelectionChange(false)
-  }, [stopMarchingAnts, onSelectionChange])
+    onPasteChange?.(false)
+  }, [stopMarchingAnts, onSelectionChange, onPasteChange])
 
   const cutSelection = useCallback(() => {
     if (phaseRef.current !== 'selected') return
@@ -295,6 +319,9 @@ export function useSelection({
     tctx.closePath()
     tctx.clip()
     tctx.drawImage(srcCanvas, bb.minX, bb.minY, bb.w, bb.h, 0, 0, bb.w, bb.h)
+
+    // 旧形式（クリーム背景）からコピーした場合、背景色を透明化
+    if (hasOpaqueBackground(srcCanvas)) stripOpaqueBackground(tempCanvas)
 
     clipboardRef.current = {
       canvas: tempCanvas,
@@ -342,6 +369,9 @@ export function useSelection({
     tctx.clip()
     tctx.drawImage(srcCanvas, bb.minX, bb.minY, bb.w, bb.h, 0, 0, bb.w, bb.h)
 
+    // 旧形式（クリーム背景）からコピーした場合、背景色を透明化
+    if (hasOpaqueBackground(srcCanvas)) stripOpaqueBackground(tempCanvas)
+
     clipboardRef.current = {
       canvas: tempCanvas,
       width: Math.ceil(bb.w),
@@ -388,8 +418,9 @@ export function useSelection({
     pasteScaleRef.current = 1
     pasteRotationRef.current = 0
     phaseRef.current = 'pasting'
+    onPasteChange?.(true)
     startMarchingAnts()
-  }, [startMarchingAnts, getTargetCanvas])
+  }, [startMarchingAnts, getTargetCanvas, onPasteChange])
 
   /** スケール・回転を適用してペーストをコミット */
   const commitPaste = useCallback(() => {
@@ -428,12 +459,13 @@ export function useSelection({
     pasteScaleRef.current = 1
     pasteRotationRef.current = 0
     phaseRef.current = 'pasting'
+    onPasteChange?.(true)
     startMarchingAnts()
-  }, [cutSelection, startMarchingAnts])
+  }, [cutSelection, startMarchingAnts, onPasteChange])
 
   // Pointer handlers
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
-    if (!enabled) return
+    if (!enabled && phaseRef.current !== 'pasting') return
     if (e.pointerType === 'touch' && !e.isPrimary) return
     const { target, rect, canvas } = getDrawTarget(e.clientX, e.clientY)
     if (!canvas || !rect) return
@@ -468,14 +500,14 @@ export function useSelection({
         }
       }
 
-      // ハンドル以外をタップ → 現在位置にコミット
+      // ハンドル以外: ドラッグで移動できるよう位置を更新（確定は確定ボタンで行う）
+      pasteTargetRef.current = target
+      pasteTargetRectRef.current = rect
       const coords = target.kind === 'desk'
         ? { x: e.clientX, y: e.clientY }
         : toCanvasCoords(e.clientX, e.clientY, rect, canvas)
       pasteCanvasCoordRef.current = coords
-      pasteTargetRef.current = target
-      pasteTargetRectRef.current = rect
-      commitPaste()
+      overlayDivRef.current?.setPointerCapture(e.pointerId)
       return
     }
 
@@ -501,10 +533,10 @@ export function useSelection({
     const coords = target.kind === 'desk' ? { x: e.clientX, y: e.clientY } : toCanvasCoords(e.clientX, e.clientY, rect, canvas)
     lassoPointsRef.current = [coords]
     overlayDivRef.current?.setPointerCapture(e.pointerId)
-  }, [enabled, getDrawTarget, getPasteHandles, clearSelection, commitPaste, overlayDivRef])
+  }, [enabled, getDrawTarget, getPasteHandles, clearSelection, overlayDivRef])
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
-    if (!enabled) return
+    if (!enabled && phaseRef.current !== 'pasting') return
     if (e.pointerType === 'touch' && !e.isPrimary) return
 
     if (phaseRef.current === 'pasting') {
@@ -562,7 +594,7 @@ export function useSelection({
   }, [enabled, getDrawTarget, getTargetCanvas, drawOverlay])
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
-    if (!enabled) return
+    if (!enabled && phaseRef.current !== 'pasting') return
     overlayDivRef.current?.releasePointerCapture(e.pointerId)
 
     if (phaseRef.current === 'pasting' && activeHandleRef.current !== null) {
@@ -611,6 +643,8 @@ export function useSelection({
     deleteSelection,
     startPaste,
     startMove,
+    commitPaste,
+    cancelPaste: clearSelection,
     hasClipboard: () => !!clipboardRef.current,
     isSelectionActive: () => phaseRef.current === 'selected' || phaseRef.current === 'moving',
     isPasting: () => phaseRef.current === 'pasting',

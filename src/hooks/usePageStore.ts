@@ -26,6 +26,25 @@ function saveDeskCanvas(canvas: HTMLCanvasElement) {
   }
 }
 
+/**
+ * 旧バージョンの保存データはクリーム色 (#fffef8) の背景が焼き込まれている。
+ * 4隅がすべてクリーム色なら旧形式と判定し、クリーム色ピクセルを透明化する。
+ */
+function migrateOpaqueBackground(ctx: CanvasRenderingContext2D, w: number, h: number) {
+  const corners = [[0, 0], [w - 1, 0], [0, h - 1], [w - 1, h - 1]] as const
+  const allCream = corners.every(([x, y]) => {
+    const p = ctx.getImageData(x, y, 1, 1).data
+    return p[0] >= 240 && p[1] >= 240 && p[2] >= 220 && p[3] > 200
+  })
+  if (!allCream) return
+  const imageData = ctx.getImageData(0, 0, w, h)
+  const d = imageData.data
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i] >= 240 && d[i + 1] >= 240 && d[i + 2] >= 220 && d[i + 3] > 200) d[i + 3] = 0
+  }
+  ctx.putImageData(imageData, 0, 0)
+}
+
 function loadCanvasFromData(canvas: HTMLCanvasElement, data: string | null) {
   const ctx = canvas.getContext('2d')!
   ctx.clearRect(0, 0, canvas.width, canvas.height)
@@ -34,6 +53,7 @@ function loadCanvasFromData(canvas: HTMLCanvasElement, data: string | null) {
   img.onload = () => {
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     ctx.drawImage(img, 0, 0)
+    migrateOpaqueBackground(ctx, canvas.width, canvas.height)
   }
   img.src = data
 }
@@ -132,6 +152,24 @@ export function usePageStore() {
    * Insert a blank spread at `at` (0-based).
    * Shifts all spreads from `at` onward one position to the right.
    */
+  const deleteSpreadAt = useCallback((at: number) => {
+    const count = spreadCountRef.current
+    if (count <= 1) return  // 最後の1スプレッドは削除不可
+    // at 以降を1つ前にシフト
+    for (let i = at; i < count - 1; i++) {
+      const L = localStorage.getItem(pageKey(i + 1, 'L'))
+      const R = localStorage.getItem(pageKey(i + 1, 'R'))
+      if (L) localStorage.setItem(pageKey(i, 'L'), L)
+      else localStorage.removeItem(pageKey(i, 'L'))
+      if (R) localStorage.setItem(pageKey(i, 'R'), R)
+      else localStorage.removeItem(pageKey(i, 'R'))
+    }
+    // 末尾の空きスロットを削除
+    localStorage.removeItem(pageKey(count - 1, 'L'))
+    localStorage.removeItem(pageKey(count - 1, 'R'))
+    setSpreadCount(count - 1)
+  }, [setSpreadCount])
+
   const insertSpreadAt = useCallback((at: number) => {
     const count = spreadCountRef.current
     for (let i = count - 1; i >= at; i--) {
@@ -182,6 +220,7 @@ export function usePageStore() {
     getThumbnail,
     reorderSpreads,
     insertSpreadAt,
+    deleteSpreadAt,
     loadAllFromProjectData,
   }
 }

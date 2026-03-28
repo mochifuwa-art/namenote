@@ -9,6 +9,7 @@ interface Props {
   onNavigate: (index: number) => void
   onReorder: (from: number, to: number) => void
   onInsertAt: (at: number) => void
+  onDeleteSpread: (index: number) => void
   getThumbnail: (index: number, side: 'L' | 'R') => string | null
 }
 
@@ -20,6 +21,7 @@ export default function PageOverviewPanel({
   onNavigate,
   onReorder,
   onInsertAt,
+  onDeleteSpread,
   getThumbnail,
 }: Props) {
   const [dragging, setDragging] = useState<number | null>(null)
@@ -56,6 +58,7 @@ export default function PageOverviewPanel({
   const handleGridPointerDown = (e: React.PointerEvent) => {
     const target = e.target as HTMLElement
     if (target.closest('[data-insert-btn]')) return  // let insert buttons handle themselves
+    if (target.closest('[data-delete-btn]')) return  // let delete buttons handle themselves
     const cardEl = target.closest('[data-card-idx]') as HTMLElement | null
     if (!cardEl) return
     const idx = parseInt(cardEl.dataset.cardIdx!)
@@ -158,6 +161,22 @@ export default function PageOverviewPanel({
       >
         {/* Drag handle (top-right corner) */}
         <div className="ov-drag-handle" title="ドラッグして並べ替え">⠿</div>
+
+        {/* Delete button (top-left corner, hidden until hover) */}
+        {spreadCount > 1 && (
+          <button
+            data-delete-btn="true"
+            className="ov-delete-btn"
+            title="このスプレッドを削除"
+            onClick={e => {
+              e.stopPropagation()
+              if (window.confirm(`スプレッド ${i + 1}（p.${i * 2 + 1}–${i * 2 + 2}）を削除しますか？\nこの操作は元に戻せません。`)) {
+                onDeleteSpread(i)
+                setVersion(v => v + 1)
+              }
+            }}
+          >✕</button>
+        )}
 
         {/* Page thumbnails: left page on left, right page on right (matches open-book layout) */}
         <div className="ov-pages">

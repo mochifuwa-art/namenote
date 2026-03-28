@@ -22,6 +22,7 @@ export default function App() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved')
   const [selectionActive, setSelectionActive] = useState(false)
   const [hasClipboard, setHasClipboard] = useState(false)
+  const [isPasting, setIsPasting] = useState(false)
   const [showOverview, setShowOverview] = useState(false)
   // Separate state for spread count so mutations (insert/reorder) trigger re-renders
   const [totalSpreads, setTotalSpreads] = useState(() =>
@@ -96,6 +97,7 @@ export default function App() {
     onSelectionChange: active => {
       setSelectionActive(active)
     },
+    onPasteChange: setIsPasting,
   })
 
   // ── Initial load ─────────────────────────────────────────────────
@@ -184,6 +186,23 @@ export default function App() {
     }
   }, [saveNow, pageStore, currentSpread])
 
+  // ── Overview: delete spread ──────────────────────────────────────
+  const handleDeleteSpread = useCallback((at: number) => {
+    if (totalSpreads <= 1) return
+    saveNow()
+    pageStore.deleteSpreadAt(at)
+    const newTotal = totalSpreads - 1
+    setTotalSpreads(newTotal)
+    if (at < currentSpread) {
+      setCurrentSpread(currentSpread - 1)
+    } else if (at === currentSpread) {
+      const newCurrent = Math.min(currentSpread, newTotal - 1)
+      setCurrentSpread(newCurrent)
+      setMobileSide('R')
+      pageStore.loadSpread(newCurrent, leftCanvasRef.current, rightCanvasRef.current)
+    }
+  }, [saveNow, pageStore, currentSpread, totalSpreads])
+
   // ── Overview: insert blank spread ────────────────────────────────
   const handleInsertAt = useCallback((at: number) => {
     saveNow()
@@ -250,7 +269,7 @@ export default function App() {
 
   // ── Pointer event dispatcher ─────────────────────────────────────
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
-    if (tool.type === 'lasso') {
+    if (tool.type === 'lasso' || selection.isPasting()) {
       selection.handlePointerDown(e)
     } else {
       drawing.handlePointerDown(e)
@@ -258,7 +277,7 @@ export default function App() {
   }, [tool.type, selection, drawing])
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
-    if (tool.type === 'lasso') {
+    if (tool.type === 'lasso' || selection.isPasting()) {
       selection.handlePointerMove(e)
     } else {
       drawing.handlePointerMove(e)
@@ -266,7 +285,7 @@ export default function App() {
   }, [tool.type, selection, drawing])
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
-    if (tool.type === 'lasso') {
+    if (tool.type === 'lasso' || selection.isPasting()) {
       selection.handlePointerUp(e)
     } else {
       drawing.handlePointerUp(e)
@@ -388,6 +407,32 @@ export default function App() {
     markUnsaved()
   }
 
+  const handleConfirmPaste = () => {
+    selection.commitPaste()
+    markUnsaved()
+  }
+  const handleCancelPaste = () => {
+    selection.cancelPaste()
+  }
+
+  const handleResetNotebook = useCallback(() => {
+    if (!window.confirm('ノートのすべてのデータを削除して初期化します。この操作は元に戻せません。\n続けますか？')) return
+    // Clear all namenote_* localStorage keys
+    const keys = Object.keys(localStorage).filter(k => k.startsWith('namenote'))
+    keys.forEach(k => localStorage.removeItem(k))
+    pageStore.setSpreadCount(1)
+    // Clear visible canvases
+    const clear = (c: HTMLCanvasElement | null) => { if (c) c.getContext('2d')!.clearRect(0, 0, c.width, c.height) }
+    clear(deskCanvasRef.current)
+    clear(leftCanvasRef.current)
+    clear(rightCanvasRef.current)
+    setCurrentSpread(0)
+    setTotalSpreads(1)
+    setMobileSide('R')
+    setSaveStatus('saved')
+    showToast('ノートを初期化しました')
+  }, [pageStore, showToast])
+
   const cursor = tool.type === 'eraser' ? 'cell' : tool.type === 'lasso' ? 'crosshair' : 'crosshair'
 
   return (
@@ -451,6 +496,10 @@ export default function App() {
         onSaveProjectFile={handleSaveProjectFile}
         onLoadProjectFile={handleLoadProjectFile}
         onImportPdf={handleImportPdf}
+        onResetNotebook={handleResetNotebook}
+        isPasting={isPasting}
+        onConfirmPaste={handleConfirmPaste}
+        onCancelPaste={handleCancelPaste}
         selectionActive={selectionActive}
         onCut={handleCut}
         onCopy={handleCopy}
@@ -474,6 +523,7 @@ export default function App() {
         onNavigate={idx => { goToSpread(idx) }}
         onReorder={handleReorder}
         onInsertAt={handleInsertAt}
+        onDeleteSpread={handleDeleteSpread}
         getThumbnail={pageStore.getThumbnail}
       />
 
