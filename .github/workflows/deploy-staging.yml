@@ -1,16 +1,16 @@
-name: Deploy to GitHub Pages (Production)
+name: Deploy to GitHub Pages (Staging)
 
 on:
   push:
     branches:
-      - main
+      - staging
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: pages-production
+  group: pages-staging
   cancel-in-progress: false
 
 jobs:
@@ -31,12 +31,12 @@ jobs:
       - name: Build
         run: npm run build
         env:
-          VITE_BASE_PATH: /namenote/
+          VITE_BASE_PATH: /namenote/staging/
 
-      - name: Deploy to gh-pages (root)
+      - name: Deploy to gh-pages (staging subdirectory)
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist
-          destination_dir: .
+          destination_dir: staging
           keep_files: true
