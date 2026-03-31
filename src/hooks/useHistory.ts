@@ -2,19 +2,13 @@ import { useRef, useState, useCallback } from 'react'
 import type { DrawTarget } from '../types'
 
 interface HistoryEntry {
-  target: 'desk' | 'left' | 'right'
+  target: 'left' | 'right'
   data: ImageData
 }
 
 const MAX_HISTORY = 20
 
-function targetKey(t: DrawTarget): 'desk' | 'left' | 'right' {
-  if (t.kind === 'desk') return 'desk'
-  return t.side
-}
-
 export function useHistory(
-  deskRef: React.RefObject<HTMLCanvasElement | null>,
   leftRef: React.RefObject<HTMLCanvasElement | null>,
   rightRef: React.RefObject<HTMLCanvasElement | null>,
 ) {
@@ -28,15 +22,13 @@ export function useHistory(
     setCanRedo(redoStack.current.length > 0)
   }, [])
 
-  const getCanvas = useCallback((target: 'desk' | 'left' | 'right') => {
-    if (target === 'desk') return deskRef.current
-    if (target === 'left') return leftRef.current
-    return rightRef.current
-  }, [deskRef, leftRef, rightRef])
+  const getCanvas = useCallback((target: 'left' | 'right') => {
+    return target === 'left' ? leftRef.current : rightRef.current
+  }, [leftRef, rightRef])
 
   /** Call BEFORE making a change to the canvas. Saves a snapshot for undo. */
   const push = useCallback((t: DrawTarget) => {
-    const key = targetKey(t)
+    const key = t.side
     const canvas = getCanvas(key)
     if (!canvas) return
     const ctx = canvas.getContext('2d')!
@@ -71,10 +63,10 @@ export function useHistory(
     sync()
   }, [getCanvas, sync])
 
-  /** Clear left/right page history on spread navigation (their content changes). */
+  /** Clear history on spread navigation. */
   const clearPageHistory = useCallback(() => {
-    undoStack.current = undoStack.current.filter(e => e.target === 'desk')
-    redoStack.current = redoStack.current.filter(e => e.target === 'desk')
+    undoStack.current = []
+    redoStack.current = []
     sync()
   }, [sync])
 

@@ -8,13 +8,14 @@ import { exportSpreadAsJpg, exportAllAsPdf } from './utils/export'
 import { saveProjectFile, loadProjectFile } from './utils/save'
 import { importPdfPages } from './utils/pdfImport'
 import { PAGE_WIDTH, PAGE_HEIGHT } from './components/PageCanvas'
-import DeskCanvas from './components/DeskCanvas'
+import MemoSidebar from './components/MemoSidebar'
 import NotebookSpread from './components/NotebookSpread'
 import Toolbar from './components/Toolbar'
 import Toast from './components/Toast'
 import PageOverviewPanel from './components/PageOverviewPanel'
 
 const SAVE_DEBOUNCE_MS = 600
+const SIDEBAR_W = 260
 
 export default function App() {
   const [currentSpread, setCurrentSpread] = useState(0)
@@ -24,20 +25,26 @@ export default function App() {
   const [hasClipboard, setHasClipboard] = useState(false)
   const [isPasting, setIsPasting] = useState(false)
   const [showOverview, setShowOverview] = useState(false)
-  // Separate state for spread count so mutations (insert/reorder) trigger re-renders
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [notebookZoom, setNotebookZoom] = useState(1)
   const [totalSpreads, setTotalSpreads] = useState(() =>
     parseInt(localStorage.getItem('namenote_spread_count') ?? '1', 10) || 1
   )
   // スマホ単ページモード: 'R'=右ページ(奇数), 'L'=左ページ(偶数)
   const [mobileSide, setMobileSide] = useState<'R' | 'L'>('R')
 
-  const deskCanvasRef = useRef<HTMLCanvasElement>(null)
+  const memoCanvasRef = useRef<HTMLCanvasElement>(null)
   const leftCanvasRef = useRef<HTMLCanvasElement>(null)
   const rightCanvasRef = useRef<HTMLCanvasElement>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null)
   const notebookRef = useRef<HTMLDivElement>(null)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Pinch-to-zoom tracking
+  const activePointersRef = useRef<Map<number, { x: number; y: number }>>(new Map())
+  const pinchInitDistRef = useRef(0)
+  const pinchInitZoomRef = useRef(1)
 
   // ── Toast notification ───────────────────────────────────────────
   const [toastMsg, setToastMsg] = useState<string | null>(null)
@@ -51,7 +58,7 @@ export default function App() {
   }, [])
 
   const pageStore = usePageStore()
-  const history = useHistory(deskCanvasRef, leftCanvasRef, rightCanvasRef)
+  const history = useHistory(leftCanvasRef, rightCanvasRef)
 
   // ── Auto-save logic ──────────────────────────────────────────────
   const markUnsaved = useCallback(() => {
@@ -59,7 +66,7 @@ export default function App() {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(() => {
       setSaveStatus('saving')
-      pageStore.saveDesk(deskCanvasRef.current)
+      pageStore.saveMemo(memoCanvasRef.current)
       pageStore.saveSpread(currentSpread, leftCanvasRef.current, rightCanvasRef.current)
       setSaveStatus('saved')
     }, SAVE_DEBOUNCE_MS)
@@ -68,7 +75,7 @@ export default function App() {
   const saveNow = useCallback(() => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     setSaveStatus('saving')
-    pageStore.saveDesk(deskCanvasRef.current)
+    pageStore.saveMemo(memoCanvasRef.current)
     pageStore.saveSpread(currentSpread, leftCanvasRef.current, rightCanvasRef.current)
     setTimeout(() => setSaveStatus('saved'), 400)
   }, [currentSpread, pageStore])
@@ -76,7 +83,6 @@ export default function App() {
   // ── Drawing ──────────────────────────────────────────────────────
   const drawing = useDrawing({
     tool,
-    deskCanvasRef,
     leftCanvasRef,
     rightCanvasRef,
     overlayRef,
@@ -91,7 +97,6 @@ export default function App() {
     overlayDivRef: overlayRef,
     leftCanvasRef,
     rightCanvasRef,
-    deskCanvasRef,
     enabled: tool.type === 'lasso',
     onBeforeEdit: history.push,
     onSelectionChange: active => {
@@ -102,8 +107,27 @@ export default function App() {
 
   // ── Initial load ─────────────────────────────────────────────────
   useEffect(() => {
-    pageStore.loadDesk(deskCanvasRef.current)
+    pageStore.loadMemo(memoCanvasRef.current)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Sidebar width CSS var + notebook scale ────────────────────────
+  const computeNotebookScale = useCallback((open: boolean) => {
+    const sidebarW = open ? SIDEBAR_W : 0
+    const isMobileWidth = window.innerWidth <= 700
+    const NOTEBOOK_W = isMobileWidth ? 560 : 1128
+    const NOTEBOOK_H = 800
+    const TOOLBAR_H = 64
+    const MARGIN = 40
+    const availableW = window.innerWidth - sidebarW - MARGIN
+    const availableH = window.innerHeight - TOOLBAR_H - MARGIN
+    const scale = Math.min(1, availableW / NOTEBOOK_W, availableH / NOTEBOOK_H)
+    document.documentElement.style.setProperty('--notebook-scale', String(scale.toFixed(4)))
+    document.documentElement.style.setProperty('--memo-sidebar-w', `${sidebarW}px`)
+  }, [])
+
+  useEffect(() => {
+    computeNotebookScale(sidebarOpen)
+  }, [sidebarOpen, computeNotebookScale])
 
   // ── Page navigation ──────────────────────────────────────────────
   const isMobile = () => window.innerWidth <= 700
@@ -144,7 +168,6 @@ export default function App() {
     }
   }
 
-  // ナビゲーションのdisabled判定
   const prevDisabled = isMobile()
     ? currentSpread === 0 && mobileSide === 'R'
     : currentSpread === 0
@@ -152,7 +175,6 @@ export default function App() {
     ? currentSpread === totalSpreads - 1 && mobileSide === 'L'
     : currentSpread === totalSpreads - 1
 
-  // ナビゲーションラベル
   const navLabel = isMobile()
     ? `p.${currentSpread * 2 + (mobileSide === 'R' ? 1 : 2)} / ${totalSpreads * 2}`
     : `${currentSpread + 1} / ${totalSpreads}`
@@ -169,7 +191,6 @@ export default function App() {
   const handleReorder = useCallback((from: number, to: number) => {
     saveNow()
     pageStore.reorderSpreads(from, to)
-    // Adjust currentSpread if its position in the array changed
     let next = currentSpread
     if (from === currentSpread) {
       next = to
@@ -181,7 +202,6 @@ export default function App() {
     if (next !== currentSpread) {
       setCurrentSpread(next)
     } else {
-      // Canvas data may have shifted under us; reload
       pageStore.loadSpread(currentSpread, leftCanvasRef.current, rightCanvasRef.current)
     }
   }, [saveNow, pageStore, currentSpread])
@@ -213,37 +233,19 @@ export default function App() {
     }
   }, [saveNow, pageStore, currentSpread])
 
-  // ── Notebook scale (fits both width and height) ──────────────────
-  const computeNotebookScale = useCallback(() => {
-    const NOTEBOOK_W = window.innerWidth <= 700 ? 560 : 1128
-    const NOTEBOOK_H = 800
-    const TOOLBAR_H = 64
-    const MARGIN = 40
-    const scaleW = (window.innerWidth - MARGIN) / NOTEBOOK_W
-    const scaleH = (window.innerHeight - TOOLBAR_H - MARGIN) / NOTEBOOK_H
-    const scale = Math.min(1, scaleW, scaleH)
-    document.documentElement.style.setProperty('--notebook-scale', String(scale.toFixed(4)))
-  }, [])
-
   // ── Window resize ────────────────────────────────────────────────
   useEffect(() => {
-    computeNotebookScale()
+    computeNotebookScale(sidebarOpen)
     const handleResize = () => {
-      const canvas = deskCanvasRef.current
-      if (!canvas) return
-      canvas.width = window.innerWidth
-      canvas.height = window.innerHeight
-      pageStore.loadDesk(canvas)
-      // Sync overlay canvas size
       if (overlayCanvasRef.current) {
         overlayCanvasRef.current.width = window.innerWidth
         overlayCanvasRef.current.height = window.innerHeight
       }
-      computeNotebookScale()
+      computeNotebookScale(sidebarOpen)
     }
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
-  }, [pageStore, computeNotebookScale])
+  }, [sidebarOpen, computeNotebookScale]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Set overlay canvas size on mount
   useEffect(() => {
@@ -267,16 +269,42 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [saveNow, history, markUnsaved])
 
-  // ── Pointer event dispatcher ─────────────────────────────────────
+  // ── Pointer event dispatcher (overlay div) ───────────────────────
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    // Track all pointers for pinch detection
+    activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+
+    if (activePointersRef.current.size === 2) {
+      // Two fingers: start pinch
+      const pts = Array.from(activePointersRef.current.values())
+      const dx = pts[1].x - pts[0].x
+      const dy = pts[1].y - pts[0].y
+      pinchInitDistRef.current = Math.sqrt(dx * dx + dy * dy) || 1
+      pinchInitZoomRef.current = notebookZoom
+      return
+    }
+
     if (tool.type === 'lasso' || selection.isPasting()) {
       selection.handlePointerDown(e)
     } else {
       drawing.handlePointerDown(e)
     }
-  }, [tool.type, selection, drawing])
+  }, [tool.type, selection, drawing, notebookZoom])
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+
+    if (activePointersRef.current.size === 2) {
+      // Pinch zoom
+      const pts = Array.from(activePointersRef.current.values())
+      const dx = pts[1].x - pts[0].x
+      const dy = pts[1].y - pts[0].y
+      const newDist = Math.sqrt(dx * dx + dy * dy) || 1
+      const newZoom = Math.max(0.3, Math.min(3, pinchInitZoomRef.current * newDist / pinchInitDistRef.current))
+      setNotebookZoom(newZoom)
+      return
+    }
+
     if (tool.type === 'lasso' || selection.isPasting()) {
       selection.handlePointerMove(e)
     } else {
@@ -285,6 +313,8 @@ export default function App() {
   }, [tool.type, selection, drawing])
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
+    activePointersRef.current.delete(e.pointerId)
+
     if (tool.type === 'lasso' || selection.isPasting()) {
       selection.handlePointerUp(e)
     } else {
@@ -316,7 +346,6 @@ export default function App() {
     }
   }
 
-  // "保存" button: save to localStorage (auto-save) AND download a project file
   const handleSaveButton = useCallback(async () => {
     saveNow()
     try {
@@ -327,14 +356,14 @@ export default function App() {
     }
   }, [saveNow, pageStore, showToast])
 
-  const handleSaveProjectFile = handleSaveButton  // export menu alias
+  const handleSaveProjectFile = handleSaveButton
 
   const handleLoadProjectFile = async (file: File) => {
     try {
       const data = await loadProjectFile(file)
       pageStore.loadAllFromProjectData(
         data,
-        deskCanvasRef.current,
+        memoCanvasRef.current,
         leftCanvasRef.current,
         rightCanvasRef.current,
         0
@@ -357,16 +386,11 @@ export default function App() {
         file,
         PAGE_WIDTH,
         PAGE_HEIGHT,
-        (current, total) => showToast(`PDF読み込み中… ${current}/${total}ページ`)
+        (current: number, total: number) => showToast(`PDF読み込み中… ${current}/${total}ページ`)
       )
       saveNow()
-      // 右綴じレイアウト（1ページ目は左始まり）:
-      //   PDF p1 → スプレッド0 左
-      //   PDF p2 → スプレッド1 右,  PDF p3 → スプレッド1 左
-      //   PDF p4 → スプレッド2 右,  PDF p5 → スプレッド2 左, …
       const spreadsNeeded = Math.ceil((pages.length + 1) / 2)
 
-      // 既存スプレッドデータをクリア（旧データが残らないように）
       const oldCount = pageStore.getSpreadCount()
       for (let i = 0; i < oldCount; i++) {
         localStorage.removeItem(`namenote_page_${i}_L`)
@@ -422,7 +446,6 @@ export default function App() {
     setSelectionActive(false)
     markUnsaved()
   }
-
   const handleConfirmPaste = () => {
     selection.commitPaste()
     markUnsaved()
@@ -433,13 +456,11 @@ export default function App() {
 
   const handleResetNotebook = useCallback(() => {
     if (!window.confirm('ノートのすべてのデータを削除して初期化します。この操作は元に戻せません。\n続けますか？')) return
-    // Clear all namenote_* localStorage keys
     const keys = Object.keys(localStorage).filter(k => k.startsWith('namenote'))
     keys.forEach(k => localStorage.removeItem(k))
     pageStore.setSpreadCount(1)
-    // Clear visible canvases
     const clear = (c: HTMLCanvasElement | null) => { if (c) c.getContext('2d')!.clearRect(0, 0, c.width, c.height) }
-    clear(deskCanvasRef.current)
+    clear(memoCanvasRef.current)
     clear(leftCanvasRef.current)
     clear(rightCanvasRef.current)
     setCurrentSpread(0)
@@ -449,24 +470,44 @@ export default function App() {
     showToast('ノートを初期化しました')
   }, [pageStore, showToast])
 
-  const cursor = tool.type === 'eraser' ? 'cell' : tool.type === 'lasso' ? 'crosshair' : 'crosshair'
+  const cursor = tool.type === 'eraser' ? 'cell' : 'crosshair'
+
+  // Sidebar width for layout calculations
+  const sidebarW = sidebarOpen ? SIDEBAR_W : 0
 
   return (
     <div className="app-root">
-      {/* Layer 0: Desk canvas */}
-      <DeskCanvas ref={deskCanvasRef} />
-
-      {/* Layer 1-2: Notebook spread */}
-      <NotebookSpread
-        ref={notebookRef}
-        leftCanvasRef={leftCanvasRef}
-        rightCanvasRef={rightCanvasRef}
-        currentSpread={currentSpread}
-        totalSpreads={totalSpreads}
-        mobileSide={mobileSide}
+      {/* Memo sidebar (left edge, z-index 200, captures its own pointer events) */}
+      <MemoSidebar
+        ref={memoCanvasRef}
+        open={sidebarOpen}
+        onToggle={() => setSidebarOpen(o => !o)}
+        tool={tool}
       />
 
-      {/* Layer 3: Selection overlay canvas */}
+      {/* Notebook spread (centered in remaining space via CSS vars) */}
+      <div
+        style={{
+          position: 'fixed',
+          inset: 0,
+          left: sidebarW,
+          pointerEvents: 'none',
+          zIndex: 1,
+          transformOrigin: 'center center',
+          transform: notebookZoom !== 1 ? `scale(${notebookZoom})` : undefined,
+        }}
+      >
+        <NotebookSpread
+          ref={notebookRef}
+          leftCanvasRef={leftCanvasRef}
+          rightCanvasRef={rightCanvasRef}
+          currentSpread={currentSpread}
+          totalSpreads={totalSpreads}
+          mobileSide={mobileSide}
+        />
+      </div>
+
+      {/* Selection overlay canvas (full viewport, pointer-events none) */}
       <canvas
         ref={overlayCanvasRef}
         style={{
@@ -479,12 +520,15 @@ export default function App() {
         }}
       />
 
-      {/* Layer 4: Event overlay div */}
+      {/* Event overlay div (starts after sidebar) */}
       <div
         ref={overlayRef}
         style={{
           position: 'fixed',
-          inset: 0,
+          top: 0,
+          left: sidebarW,
+          right: 0,
+          bottom: 0,
           zIndex: 100,
           cursor,
           touchAction: 'none',
@@ -495,7 +539,7 @@ export default function App() {
         onPointerCancel={handlePointerUp}
       />
 
-      {/* Layer 5: Toolbar */}
+      {/* Toolbar */}
       <Toolbar
         tool={tool}
         onToolChange={t => { setTool(t); if (t.type !== 'lasso') selection.clearSelection() }}

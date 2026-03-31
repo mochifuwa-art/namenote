@@ -7,7 +7,6 @@ export interface DrawingTool {
 }
 
 export type DrawTarget =
-  | { kind: 'desk' }
   | { kind: 'page'; side: 'left' | 'right' }
 
 export interface SelectionClipboard {

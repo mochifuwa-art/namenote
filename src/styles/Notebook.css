@@ -2,7 +2,7 @@
 .notebook-spread {
   position: fixed;
   top: 50%;
-  left: 50%;
+  left: calc(var(--memo-sidebar-w, 0px) + (100vw - var(--memo-sidebar-w, 0px)) / 2);
   transform: translate(-50%, calc(-50% - 28px)) scale(var(--notebook-scale, 1)); /* scale set by JS to fit viewport */
   display: flex;
   align-items: stretch;

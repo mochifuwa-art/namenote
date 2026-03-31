@@ -8,24 +8,7 @@ html, body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background-color: #c8b898;
-  background-image:
-    /* Wood grain texture */
-    repeating-linear-gradient(
-      88deg,
-      transparent,
-      transparent 18px,
-      rgba(0, 0, 0, 0.04) 18px,
-      rgba(0, 0, 0, 0.04) 19px
-    ),
-    repeating-linear-gradient(
-      2deg,
-      transparent,
-      transparent 60px,
-      rgba(255, 255, 255, 0.06) 60px,
-      rgba(255, 255, 255, 0.06) 61px
-    ),
-    linear-gradient(170deg, #d4c4a0 0%, #b8a880 50%, #c8b898 100%);
+  background-color: #e8e4de;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Sans', 'Meiryo', sans-serif;
 }
 

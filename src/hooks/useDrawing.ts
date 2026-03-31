@@ -9,7 +9,7 @@ function getDrawTarget(
   clientY: number,
   leftRect: DOMRect | null,
   rightRect: DOMRect | null
-): DrawTarget {
+): DrawTarget | null {
   if (leftRect && clientX >= leftRect.left && clientX <= leftRect.right &&
       clientY >= leftRect.top && clientY <= leftRect.bottom) {
     return { kind: 'page', side: 'left' }
@@ -18,7 +18,7 @@ function getDrawTarget(
       clientY >= rightRect.top && clientY <= rightRect.bottom) {
     return { kind: 'page', side: 'right' }
   }
-  return { kind: 'desk' }
+  return null
 }
 
 function toCanvasCoords(clientX: number, clientY: number, rect: DOMRect, canvas: HTMLCanvasElement) {
@@ -30,7 +30,6 @@ function toCanvasCoords(clientX: number, clientY: number, rect: DOMRect, canvas:
 
 interface UseDrawingOptions {
   tool: DrawingTool
-  deskCanvasRef: React.RefObject<HTMLCanvasElement | null>
   leftCanvasRef: React.RefObject<HTMLCanvasElement | null>
   rightCanvasRef: React.RefObject<HTMLCanvasElement | null>
   overlayRef: React.RefObject<HTMLDivElement | null>
@@ -41,7 +40,6 @@ interface UseDrawingOptions {
 
 export function useDrawing({
   tool,
-  deskCanvasRef,
   leftCanvasRef,
   rightCanvasRef,
   overlayRef,
@@ -76,19 +74,10 @@ export function useDrawing({
       const leftRect = leftCanvasRef.current?.getBoundingClientRect() ?? null
       const rightRect = rightCanvasRef.current?.getBoundingClientRect() ?? null
       const target = getDrawTarget(e.clientX, e.clientY, leftRect, rightRect)
+      if (!target) return
 
-      let canvas: HTMLCanvasElement | null = null
-      let rect: DOMRect | null = null
-
-      if (target.kind === 'desk') {
-        canvas = deskCanvasRef.current
-        if (canvas) {
-          rect = new DOMRect(0, 0, window.innerWidth, window.innerHeight)
-        }
-      } else if (target.kind === 'page') {
-        canvas = target.side === 'left' ? leftCanvasRef.current : rightCanvasRef.current
-        rect = target.side === 'left' ? leftRect : rightRect
-      }
+      const canvas = target.side === 'left' ? leftCanvasRef.current : rightCanvasRef.current
+      const rect = target.side === 'left' ? leftRect : rightRect
 
       if (!canvas || !rect) return
 
@@ -97,9 +86,7 @@ export function useDrawing({
       const ctx = canvas.getContext('2d')!
       applyToolToCtx(ctx)
 
-      const coords = target.kind === 'desk'
-        ? { x: e.clientX, y: e.clientY }
-        : toCanvasCoords(e.clientX, e.clientY, rect, canvas)
+      const coords = toCanvasCoords(e.clientX, e.clientY, rect, canvas)
 
       ctx.beginPath()
       ctx.moveTo(coords.x, coords.y)
@@ -118,7 +105,7 @@ export function useDrawing({
 
       overlayRef.current?.setPointerCapture(e.pointerId)
     },
-    [enabled, tool, deskCanvasRef, leftCanvasRef, rightCanvasRef, overlayRef, onBeforeStroke, applyToolToCtx]
+    [enabled, tool, leftCanvasRef, rightCanvasRef, overlayRef, onBeforeStroke, applyToolToCtx]
   )
 
   const handlePointerMove = useCallback(
@@ -128,12 +115,9 @@ export function useDrawing({
 
       const ctx = activeCtxRef.current
       const canvas = activeCanvasRef.current
-      const target = activeTargetRef.current!
       const rect = activeRectRef.current!
 
-      const coords = target.kind === 'desk'
-        ? { x: e.clientX, y: e.clientY }
-        : toCanvasCoords(e.clientX, e.clientY, rect, canvas)
+      const coords = toCanvasCoords(e.clientX, e.clientY, rect, canvas)
 
       applyToolToCtx(ctx)
       ctx.beginPath()
