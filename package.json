@@ -7,9 +7,20 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:cap": "CAPACITOR_BUILD=true npm run build",
+    "sync:ios": "npm run build:cap && npx cap sync ios",
+    "sync:android": "npm run build:cap && npx cap sync android",
+    "open:ios": "npx cap open ios",
+    "open:android": "npx cap open android"
   },
   "dependencies": {
+    "@capacitor/android": "^8.3.0",
+    "@capacitor/core": "^8.3.0",
+    "@capacitor/filesystem": "^8.1.2",
+    "@capacitor/ios": "^8.3.0",
+    "@capacitor/share": "^8.0.1",
+    "@capacitor/status-bar": "^8.0.2",
     "canvas": "^3.2.2",
     "jspdf": "^4.2.1",
     "pdfjs-dist": "^5.5.207",
@@ -17,6 +28,7 @@
     "react-dom": "^19.2.4"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.3.0",
     "@eslint/js": "^9.39.4",
     "@types/node": "^24.12.0",
     "@types/react": "^19.2.14",

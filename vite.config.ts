@@ -4,6 +4,8 @@ import react from '@vitejs/plugin-react'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
-  // VITE_BASE_PATH env var allows staging to deploy to a subdirectory
-  base: process.env.VITE_BASE_PATH ?? '/namenote/',
+  // Capacitor requires relative paths (./); web deploys use /namenote/ or /namenote/staging/
+  base: process.env.CAPACITOR_BUILD === 'true'
+    ? './'
+    : (process.env.VITE_BASE_PATH ?? '/namenote/'),
 })
