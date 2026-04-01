@@ -2,7 +2,7 @@
   position: fixed;
   top: 0;
   left: 0;
-  height: 100dvh;
+  height: calc(100dvh - 64px);
   z-index: 200;
   display: flex;
   flex-direction: row;
@@ -10,7 +10,7 @@
 
 .memo-sidebar__panel {
   width: 260px;
-  height: 100dvh;
+  height: calc(100dvh - 64px);
   overflow: hidden;
   display: flex;
   flex-direction: column;
