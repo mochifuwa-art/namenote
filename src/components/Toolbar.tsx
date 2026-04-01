@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import type { DrawingTool, SaveStatus } from '../types'
+import type { DrawingTool, SaveStatus, TextWritingMode } from '../types'
 import { type ToolType } from '../types'
 import '../styles/Toolbar.css'
 
@@ -10,6 +10,7 @@ const PRESET_COLORS = [
 ]
 
 const BRUSH_SIZES = [1, 2, 4, 6, 10, 16, 24]
+const TEXT_FONT_SIZES = [10, 14, 18, 24, 32, 48]
 
 interface ToolbarProps {
   tool: DrawingTool
@@ -43,6 +44,11 @@ interface ToolbarProps {
   onUndo: () => void
   onRedo: () => void
   onOpenOverview: () => void
+  // Text tool props
+  writingMode: TextWritingMode
+  onWritingModeChange: (mode: TextWritingMode) => void
+  textFontSize: number
+  onTextFontSizeChange: (size: number) => void
 }
 
 export default function Toolbar({
@@ -77,6 +83,10 @@ export default function Toolbar({
   onUndo,
   onRedo,
   onOpenOverview,
+  writingMode,
+  onWritingModeChange,
+  textFontSize,
+  onTextFontSizeChange,
 }: ToolbarProps) {
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [showColorPicker, setShowColorPicker] = useState(false)
@@ -86,7 +96,11 @@ export default function Toolbar({
   const colorGroupRef = useRef<HTMLDivElement>(null)
 
   const setToolType = (type: ToolType) => onToolChange({ ...tool, type })
-  const setColor = (color: string) => { onToolChange({ ...tool, type: 'pen', color }); setShowColorPicker(false) }
+  const setColor = (color: string) => {
+    // Keep current tool type when picking color (don't switch text→pen)
+    onToolChange({ ...tool, color: color, type: tool.type === 'text' ? 'text' : 'pen' })
+    setShowColorPicker(false)
+  }
   const setSize = (size: number) => onToolChange({ ...tool, size })
 
   const saveIndicator = saveStatus === 'saved' ? '●' : saveStatus === 'saving' ? '◌' : '●'
@@ -129,6 +143,12 @@ export default function Toolbar({
         >
           🔲<span className="tool-label">選択</span>
         </button>
+        <button
+          className={`tool-btn tool-btn--labeled ${tool.type === 'text' ? 'active' : ''}`}
+          onClick={() => setToolType('text')}
+        >
+          Ａ<span className="tool-label">テキスト</span>
+        </button>
       </div>
 
       <div className="toolbar-sep" />
@@ -146,7 +166,6 @@ export default function Toolbar({
           }}
           title="色"
         />
-        {/* Color picker portal — avoids backdrop-filter stacking context on iOS */}
         {showColorPicker && createPortal(
           <>
             <div className="popup-backdrop" onClick={() => setShowColorPicker(false)} />
@@ -164,32 +183,68 @@ export default function Toolbar({
               <input
                 type="color"
                 value={tool.color}
-                onChange={e => onToolChange({ ...tool, color: e.target.value, type: 'pen' })}
+                onChange={e => onToolChange({ ...tool, color: e.target.value, type: tool.type === 'text' ? 'text' : 'pen' })}
                 style={{ width: '100%', marginTop: 6, cursor: 'pointer' }}
               />
             </div>
           </>,
-          document.body
+          document.body,
         )}
       </div>
 
-      {/* Size */}
-      <div className="toolbar-group size-group">
-        {BRUSH_SIZES.map(s => (
-          <button
-            key={s}
-            className={`size-btn ${tool.size === s ? 'active' : ''}`}
-            onClick={() => setSize(s)}
-            title={`${s}px`}
-          >
-            <span style={{ width: Math.min(s, 14), height: Math.min(s, 14), borderRadius: '50%', background: 'currentColor', display: 'inline-block' }} />
-          </button>
-        ))}
-      </div>
+      {/* Size / Font size — text tool shows font sizes, others show brush sizes */}
+      {tool.type === 'text' ? (
+        <>
+          <div className="toolbar-group size-group">
+            {TEXT_FONT_SIZES.map(s => (
+              <button
+                key={s}
+                className={`size-btn ${textFontSize === s ? 'active' : ''}`}
+                onClick={() => onTextFontSizeChange(s)}
+                title={`${s}pt`}
+                style={{ fontSize: 11, minWidth: 26 }}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+          <div className="toolbar-sep" />
+          {/* Writing mode toggle */}
+          <div className="toolbar-group">
+            <button
+              className={`tool-btn ${writingMode === 'horizontal-tb' ? 'active' : ''}`}
+              onClick={() => onWritingModeChange('horizontal-tb')}
+              title="横書き"
+            >
+              横書き
+            </button>
+            <button
+              className={`tool-btn ${writingMode === 'vertical-rl' ? 'active' : ''}`}
+              onClick={() => onWritingModeChange('vertical-rl')}
+              title="縦書き"
+            >
+              縦書き
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className="toolbar-group size-group">
+          {BRUSH_SIZES.map(s => (
+            <button
+              key={s}
+              className={`size-btn ${tool.size === s ? 'active' : ''}`}
+              onClick={() => setSize(s)}
+              title={`${s}px`}
+            >
+              <span style={{ width: Math.min(s, 14), height: Math.min(s, 14), borderRadius: '50%', background: 'currentColor', display: 'inline-block' }} />
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="toolbar-sep" />
 
-      {/* ペースト確定/キャンセル（ペースト中は常に最優先表示） */}
+      {/* ペースト確定/キャンセル */}
       {isPasting && (
         <>
           <div className="toolbar-sep" />
@@ -211,25 +266,25 @@ export default function Toolbar({
         </>
       )}
 
-      {/* Selection actions (visible when lasso is active and NOT pasting) */}
+      {/* Selection actions */}
       {tool.type === 'lasso' && !isPasting && (
         <>
           <div className="toolbar-group">
-            <button className="tool-btn" onClick={onCut} disabled={!selectionActive} title="切り取り (Ctrl+X)">✂️</button>
-            <button className="tool-btn" onClick={onCopy} disabled={!selectionActive} title="コピー (Ctrl+C)">📋</button>
-            <button className="tool-btn" onClick={onMove} disabled={!selectionActive} title="移動（その場でペースト開始）" style={{ fontSize: 11 }}>移動</button>
-            <button className="tool-btn" onClick={onPaste} disabled={!hasClipboard} title="貼り付け (Ctrl+V)">📌</button>
-            <button className="tool-btn" onClick={onDeleteSelection} disabled={!selectionActive} title="削除 (Del)">🗑️</button>
+            <button className="tool-btn" onClick={onCut} disabled={!selectionActive} title="切り取り">✂️</button>
+            <button className="tool-btn" onClick={onCopy} disabled={!selectionActive} title="コピー">📋</button>
+            <button className="tool-btn" onClick={onMove} disabled={!selectionActive} title="移動" style={{ fontSize: 11 }}>移動</button>
+            <button className="tool-btn" onClick={onPaste} disabled={!hasClipboard} title="貼り付け">📌</button>
+            <button className="tool-btn" onClick={onDeleteSelection} disabled={!selectionActive} title="削除">🗑️</button>
           </div>
           <div className="toolbar-sep" />
         </>
       )}
 
-      {/* Page navigation — 右綴じ: 前へ=▶(右方向/表紙側)、次へ=◀(左方向/奥側) */}
+      {/* Page navigation */}
       <div className="toolbar-group">
-        <button className="nav-btn" onClick={onNextSpread} disabled={nextDisabled} title="次のページ（左方向）">◀</button>
+        <button className="nav-btn" onClick={onNextSpread} disabled={nextDisabled} title="次のページ">◀</button>
         <span className="spread-label">{navLabel}</span>
-        <button className="nav-btn" onClick={onPrevSpread} disabled={prevDisabled} title="前のページ（右方向）">▶</button>
+        <button className="nav-btn" onClick={onPrevSpread} disabled={prevDisabled} title="前のページ">▶</button>
         <button className="nav-btn add-btn" onClick={onAddSpread} title="スプレッド追加">＋</button>
         <button className="tool-btn tool-btn--labeled" onClick={onOpenOverview}>
           ☰<span className="tool-label">一覧</span>
@@ -254,7 +309,6 @@ export default function Toolbar({
         >
           ファイル ▲
         </button>
-        {/* Export menu portal — avoids backdrop-filter stacking context on iOS */}
         {showExportMenu && createPortal(
           <>
             <div className="popup-backdrop" onClick={() => setShowExportMenu(false)} />
@@ -273,7 +327,7 @@ export default function Toolbar({
               >ノートを初期化…</button>
             </div>
           </>,
-          document.body
+          document.body,
         )}
         <input
           ref={fileInputRef}

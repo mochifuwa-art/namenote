@@ -1,4 +1,17 @@
-export type ToolType = 'pen' | 'eraser' | 'lasso'
+export type ToolType = 'pen' | 'eraser' | 'lasso' | 'text'
+export type TextWritingMode = 'horizontal-tb' | 'vertical-rl'
+
+export interface TextObject {
+  id: string
+  x: number
+  y: number
+  text: string
+  fontSize: number
+  color: string
+  writingMode: TextWritingMode
+  spread: number                          // spread index (0-based), ignored for memo
+  side: 'left' | 'right' | 'memo'
+}
 
 export interface DrawingTool {
   type: ToolType

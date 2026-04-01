@@ -1,5 +1,6 @@
 import { forwardRef, useRef, useCallback, useEffect } from 'react'
-import type { DrawingTool } from '../types'
+import type { DrawingTool, TextObject, TextWritingMode } from '../types'
+import TextLayer from './TextLayer'
 import '../styles/MemoSidebar.css'
 
 const MEMO_CANVAS_WIDTH = 260
@@ -9,10 +10,34 @@ interface MemoSidebarProps {
   open: boolean
   onToggle: () => void
   tool: DrawingTool
+  // Text layer props
+  textObjects: TextObject[]
+  isTextActive: boolean
+  textColor: string
+  textFontSize: number
+  textWritingMode: TextWritingMode
+  onAddText: (obj: TextObject) => void
+  onUpdateText: (id: string, updates: Partial<Pick<TextObject, 'x' | 'y' | 'text'>>) => void
+  onDeleteText: (id: string) => void
 }
 
 const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
-  ({ open, onToggle, tool }, canvasRef) => {
+  (
+    {
+      open,
+      onToggle,
+      tool,
+      textObjects,
+      isTextActive,
+      textColor,
+      textFontSize,
+      textWritingMode,
+      onAddText,
+      onUpdateText,
+      onDeleteText,
+    },
+    canvasRef,
+  ) => {
     const scrollRef = useRef<HTMLDivElement>(null)
     const isDrawingRef = useRef(false)
     const lastPtRef = useRef({ x: 0, y: 0 })
@@ -36,59 +61,77 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
       }
     }, [])
 
-    const applyTool = useCallback((ctx: CanvasRenderingContext2D) => {
-      ctx.globalCompositeOperation = tool.type === 'eraser' ? 'destination-out' : 'source-over'
-      ctx.strokeStyle = tool.color
-      ctx.lineWidth = tool.size
-      ctx.lineCap = 'round'
-      ctx.lineJoin = 'round'
-    }, [tool])
+    const applyTool = useCallback(
+      (ctx: CanvasRenderingContext2D) => {
+        ctx.globalCompositeOperation =
+          tool.type === 'eraser' ? 'destination-out' : 'source-over'
+        ctx.strokeStyle = tool.color
+        ctx.lineWidth = tool.size
+        ctx.lineCap = 'round'
+        ctx.lineJoin = 'round'
+      },
+      [tool],
+    )
 
-    const handlePointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
-      if (e.pointerType === 'touch' && !e.isPrimary) return
-      e.currentTarget.setPointerCapture(e.pointerId)
+    const handlePointerDown = useCallback(
+      (e: React.PointerEvent<HTMLCanvasElement>) => {
+        if (isTextActive) return          // text tool active → text layer handles events
+        if (e.pointerType === 'touch' && !e.isPrimary) return
+        e.currentTarget.setPointerCapture(e.pointerId)
 
-      const canvas = (canvasRef as React.RefObject<HTMLCanvasElement>).current
-      if (!canvas) return
-      const ctx = canvas.getContext('2d')!
-      applyTool(ctx)
+        const canvas = (canvasRef as React.RefObject<HTMLCanvasElement>).current
+        if (!canvas) return
+        const ctx = canvas.getContext('2d')!
+        applyTool(ctx)
 
-      const pt = getCanvasCoords(e.clientX, e.clientY)
-      ctx.beginPath()
-      ctx.arc(pt.x, pt.y, tool.size / 2, 0, Math.PI * 2)
-      ctx.fillStyle = tool.type === 'eraser' ? 'rgba(0,0,0,1)' : tool.color
-      ctx.globalCompositeOperation = tool.type === 'eraser' ? 'destination-out' : 'source-over'
-      ctx.fill()
+        const pt = getCanvasCoords(e.clientX, e.clientY)
+        ctx.beginPath()
+        ctx.arc(pt.x, pt.y, tool.size / 2, 0, Math.PI * 2)
+        ctx.fillStyle =
+          tool.type === 'eraser' ? 'rgba(0,0,0,1)' : tool.color
+        ctx.globalCompositeOperation =
+          tool.type === 'eraser' ? 'destination-out' : 'source-over'
+        ctx.fill()
 
-      isDrawingRef.current = true
-      lastPtRef.current = pt
-      activeCtxRef.current = ctx
-    }, [canvasRef, applyTool, getCanvasCoords, tool])
+        isDrawingRef.current = true
+        lastPtRef.current = pt
+        activeCtxRef.current = ctx
+      },
+      [canvasRef, applyTool, getCanvasCoords, tool, isTextActive],
+    )
 
-    const handlePointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
-      if (!isDrawingRef.current || !activeCtxRef.current) return
-      if (e.pointerType === 'touch' && !e.isPrimary) return
+    const handlePointerMove = useCallback(
+      (e: React.PointerEvent<HTMLCanvasElement>) => {
+        if (!isDrawingRef.current || !activeCtxRef.current) return
+        if (e.pointerType === 'touch' && !e.isPrimary) return
 
-      const pt = getCanvasCoords(e.clientX, e.clientY)
-      const ctx = activeCtxRef.current
-      applyTool(ctx)
-      ctx.beginPath()
-      ctx.moveTo(lastPtRef.current.x, lastPtRef.current.y)
-      ctx.lineTo(pt.x, pt.y)
-      ctx.stroke()
-      lastPtRef.current = pt
-    }, [applyTool, getCanvasCoords])
+        const pt = getCanvasCoords(e.clientX, e.clientY)
+        const ctx = activeCtxRef.current
+        applyTool(ctx)
+        ctx.beginPath()
+        ctx.moveTo(lastPtRef.current.x, lastPtRef.current.y)
+        ctx.lineTo(pt.x, pt.y)
+        ctx.stroke()
+        lastPtRef.current = pt
+      },
+      [applyTool, getCanvasCoords],
+    )
 
-    const handlePointerUp = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
-      if (!isDrawingRef.current) return
-      isDrawingRef.current = false
-      activeCtxRef.current = null
-      e.currentTarget.releasePointerCapture(e.pointerId)
-    }, [])
+    const handlePointerUp = useCallback(
+      (e: React.PointerEvent<HTMLCanvasElement>) => {
+        if (!isDrawingRef.current) return
+        isDrawingRef.current = false
+        activeCtxRef.current = null
+        e.currentTarget.releasePointerCapture(e.pointerId)
+      },
+      [],
+    )
 
     return (
       <div className="memo-sidebar">
-        <div className={`memo-sidebar__panel${open ? '' : ' memo-sidebar__panel--collapsed'}`}>
+        <div
+          className={`memo-sidebar__panel${open ? '' : ' memo-sidebar__panel--collapsed'}`}
+        >
           <div className="memo-sidebar__header">メモ</div>
           <div className="memo-sidebar__scroll" ref={scrollRef}>
             <div className="memo-sidebar__canvas-wrap">
@@ -99,6 +142,20 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
                 onPointerCancel={handlePointerUp}
+              />
+              <TextLayer
+                objects={textObjects}
+                isActive={isTextActive}
+                canvasWidth={MEMO_CANVAS_WIDTH}
+                canvasHeight={MEMO_CANVAS_HEIGHT}
+                spread={0}
+                side="memo"
+                color={textColor}
+                fontSize={textFontSize}
+                writingMode={textWritingMode}
+                onAdd={onAddText}
+                onUpdate={onUpdateText}
+                onDelete={onDeleteText}
               />
             </div>
           </div>
@@ -112,7 +169,7 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
         </button>
       </div>
     )
-  }
+  },
 )
 
 MemoSidebar.displayName = 'MemoSidebar'
