@@ -9,7 +9,6 @@ const PRESET_COLORS = [
   '#e74c3c', '#e67e22', '#f1c40f', '#2ecc71', '#3498db', '#9b59b6',
 ]
 
-const BRUSH_SIZES = [1, 2, 4, 6, 10, 16, 24]
 const TEXT_FONT_SIZES = [10, 14, 18, 24, 32, 48]
 
 interface ToolbarProps {
@@ -228,17 +227,17 @@ export default function Toolbar({
           </div>
         </>
       ) : (
-        <div className="toolbar-group size-group">
-          {BRUSH_SIZES.map(s => (
-            <button
-              key={s}
-              className={`size-btn ${tool.size === s ? 'active' : ''}`}
-              onClick={() => setSize(s)}
-              title={`${s}px`}
-            >
-              <span style={{ width: Math.min(s, 14), height: Math.min(s, 14), borderRadius: '50%', background: 'currentColor', display: 'inline-block' }} />
-            </button>
-          ))}
+        <div className="toolbar-group">
+          <input
+            type="range"
+            className="size-slider"
+            min={1}
+            max={30}
+            value={tool.size}
+            onChange={e => setSize(parseInt(e.target.value))}
+            title={`${tool.size}px`}
+          />
+          <span className="size-label">{tool.size}px</span>
         </div>
       )}
 

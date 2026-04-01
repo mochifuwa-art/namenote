@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useRef, useCallback } from 'react'
 import type { TextObject, TextWritingMode } from '../types'
 import '../styles/TextLayer.css'
 
@@ -14,7 +14,8 @@ interface TextLayerProps {
   writingMode: TextWritingMode
   onAdd: (obj: TextObject) => void
   onUpdate: (id: string, updates: Partial<Pick<TextObject, 'x' | 'y' | 'text'>>) => void
-  onDelete: (id: string) => void
+  /** Called when user taps on empty area or existing text object — opens the portal editor */
+  onEditRequest: (id: string, screenX: number, screenY: number) => void
 }
 
 export default function TextLayer({
@@ -29,9 +30,8 @@ export default function TextLayer({
   writingMode,
   onAdd,
   onUpdate,
-  onDelete,
+  onEditRequest,
 }: TextLayerProps) {
-  const [editingId, setEditingId] = useState<string | null>(null)
   const layerRef = useRef<HTMLDivElement>(null)
 
   const clientToCanvas = useCallback(
@@ -44,43 +44,20 @@ export default function TextLayer({
     [canvasWidth, canvasHeight],
   )
 
-  // Click on empty layer area → create new text object
+  // Tap on empty layer area → create new text object then open editor
   const handleLayerPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (!isActive) return
-      if (e.target !== e.currentTarget) return // clicked on an existing text item
+      if (e.target !== e.currentTarget) return // hit an existing text item
 
       const { x, y } = clientToCanvas(e.clientX, e.clientY)
       const id = crypto.randomUUID()
       onAdd({ id, x, y, text: '', fontSize, color, writingMode, spread, side })
-      setEditingId(id)
+      onEditRequest(id, e.clientX, e.clientY)
       e.stopPropagation()
     },
-    [isActive, clientToCanvas, fontSize, color, writingMode, spread, side, onAdd],
+    [isActive, clientToCanvas, fontSize, color, writingMode, spread, side, onAdd, onEditRequest],
   )
-
-  const handleEditRequest = useCallback((id: string) => setEditingId(id), [])
-
-  const handleBlur = useCallback(
-    (id: string, text: string) => {
-      if (!text.trim()) onDelete(id)
-      setEditingId(null)
-    },
-    [onDelete],
-  )
-
-  // Escape to commit current edit
-  useEffect(() => {
-    if (!editingId) return
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setEditingId(null)
-        e.stopPropagation()
-      }
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [editingId])
 
   return (
     <div
@@ -92,14 +69,10 @@ export default function TextLayer({
         <TextItem
           key={obj.id}
           obj={obj}
-          isEditing={editingId === obj.id}
           isActive={isActive}
           canvasWidth={canvasWidth}
-          onTextChange={text => onUpdate(obj.id, { text })}
-          onBlur={text => handleBlur(obj.id, text)}
-          onDelete={() => onDelete(obj.id)}
-          onEditRequest={() => handleEditRequest(obj.id)}
           onMove={(x, y) => onUpdate(obj.id, { x, y })}
+          onEditRequest={(sx, sy) => onEditRequest(obj.id, sx, sy)}
         />
       ))}
     </div>
@@ -110,28 +83,13 @@ export default function TextLayer({
 
 interface TextItemProps {
   obj: TextObject
-  isEditing: boolean
   isActive: boolean
   canvasWidth: number
-  onTextChange: (text: string) => void
-  onBlur: (text: string) => void
-  onDelete: () => void
-  onEditRequest: () => void
   onMove: (x: number, y: number) => void
+  onEditRequest: (screenX: number, screenY: number) => void
 }
 
-function TextItem({
-  obj,
-  isEditing,
-  isActive,
-  canvasWidth,
-  onTextChange,
-  onBlur,
-  onDelete,
-  onEditRequest,
-  onMove,
-}: TextItemProps) {
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+function TextItem({ obj, isActive, canvasWidth, onMove, onEditRequest }: TextItemProps) {
   const dragRef = useRef<{
     startPx: number
     startPy: number
@@ -141,24 +99,13 @@ function TextItem({
     moved: boolean
   } | null>(null)
 
-  // Auto-focus textarea when entering edit mode
-  useEffect(() => {
-    if (isEditing && textareaRef.current) {
-      textareaRef.current.focus()
-      const len = textareaRef.current.value.length
-      textareaRef.current.setSelectionRange(len, len)
-    }
-  }, [isEditing])
-
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!isActive || isEditing) return
+    if (!isActive) return
     e.stopPropagation()
 
-    // Compute CSS→canvas scale from parent text-layer element
     const layer = (e.currentTarget as HTMLElement).closest('.text-layer') as HTMLElement
     const rect = layer.getBoundingClientRect()
     const scale = rect.width / canvasWidth
-
     ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
     dragRef.current = {
       startPx: e.clientX,
@@ -185,46 +132,7 @@ function TextItem({
     const wasMoved = dragRef.current.moved
     dragRef.current = null
     ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
-    if (!wasMoved) onEditRequest()
-  }
-
-  const textStyle: React.CSSProperties = {
-    writingMode: obj.writingMode as 'horizontal-tb' | 'vertical-rl',
-    fontSize: obj.fontSize,
-    color: obj.color,
-    lineHeight: 1.5,
-    fontFamily:
-      '"Hiragino Mincho ProN", "游明朝", YuMincho, "ヒラギノ明朝 ProN", serif',
-  }
-
-  if (isEditing) {
-    return (
-      <div
-        className="text-item__edit-wrap"
-        style={{ left: obj.x, top: obj.y }}
-      >
-        <button
-          className="text-item__delete"
-          onPointerDown={e => { e.preventDefault(); e.stopPropagation() }}
-          onClick={onDelete}
-          title="テキストを削除"
-        >
-          ✕
-        </button>
-        <textarea
-          ref={textareaRef}
-          value={obj.text}
-          onChange={e => onTextChange(e.target.value)}
-          onBlur={e => onBlur(e.target.value)}
-          className="text-item__editor"
-          style={textStyle}
-          onPointerDown={e => e.stopPropagation()}
-          onKeyDown={e => {
-            if (e.key === 'Escape') e.currentTarget.blur()
-          }}
-        />
-      </div>
-    )
+    if (!wasMoved) onEditRequest(e.clientX, e.clientY)
   }
 
   if (!obj.text.trim()) return null
@@ -236,9 +144,17 @@ function TextItem({
         position: 'absolute',
         left: obj.x,
         top: obj.y,
-        ...textStyle,
+        writingMode: obj.writingMode as 'horizontal-tb' | 'vertical-rl',
+        fontSize: obj.fontSize,
+        color: obj.color,
+        lineHeight: 1.5,
+        fontFamily:
+          '"Hiragino Mincho ProN", "游明朝", YuMincho, "ヒラギノ明朝 ProN", serif',
         whiteSpace: 'pre',
         zIndex: 5,
+        pointerEvents: isActive ? 'all' : 'none',
+        userSelect: 'none',
+        cursor: isActive ? 'move' : 'default',
       }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}

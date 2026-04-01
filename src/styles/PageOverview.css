@@ -74,8 +74,8 @@
 /* ── Insert zone ─────────────────────────────────────────────────── */
 .ov-insert {
   direction: ltr;
-  width: 22px;
-  height: 130px;
+  width: 16px;
+  height: 160px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -208,6 +208,11 @@
   background: rgba(248, 113, 113, 0.25) !important;
 }
 
+/* ── Single-page card variant ────────────────────────────────────── */
+.ov-card--page {
+  width: 100px;
+}
+
 /* ── Page thumbnails ─────────────────────────────────────────────── */
 .ov-pages {
   display: flex;
@@ -222,6 +227,11 @@
   gap: 3px;
 }
 
+/* Single-page layout */
+.ov-page--single {
+  width: 100%;
+}
+
 .ov-thumb {
   width: 72px;
   height: 102px;
@@ -230,6 +240,11 @@
   background: #fffef8;
   border: 1px solid rgba(0, 0, 0, 0.12);
   flex-shrink: 0;
+}
+
+.ov-page--single .ov-thumb {
+  width: 100%;
+  height: 116px;
 }
 
 .ov-thumb img {

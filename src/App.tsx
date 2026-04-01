@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import type { DrawingTool, SaveStatus, TextObject, TextWritingMode } from './types'
 import { usePageStore } from './hooks/usePageStore'
 import { useDrawing } from './hooks/useDrawing'
@@ -13,6 +14,7 @@ import NotebookSpread from './components/NotebookSpread'
 import Toolbar from './components/Toolbar'
 import Toast from './components/Toast'
 import PageOverviewPanel from './components/PageOverviewPanel'
+import TextEditor from './components/TextEditor'
 
 const SAVE_DEBOUNCE_MS = 600
 const SIDEBAR_W = 260
@@ -39,6 +41,11 @@ export default function App() {
   })
   const [writingMode, setWritingMode] = useState<TextWritingMode>('horizontal-tb')
   const [textFontSize, setTextFontSize] = useState(18)
+  const [textEditorState, setTextEditorState] = useState<{ id: string; screenX: number; screenY: number } | null>(null)
+
+  const openTextEditor = useCallback((id: string, screenX: number, screenY: number) => {
+    setTextEditorState({ id, screenX, screenY })
+  }, [])
 
   const memoCanvasRef = useRef<HTMLCanvasElement>(null)
   const leftCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -101,7 +108,7 @@ export default function App() {
   )
 
   const updateTextObject = useCallback(
-    (id: string, updates: Partial<Pick<TextObject, 'x' | 'y' | 'text'>>) => {
+    (id: string, updates: Partial<Pick<TextObject, 'x' | 'y' | 'text' | 'fontSize' | 'writingMode'>>) => {
       setTextObjects(prev => {
         const next = prev.map(o => (o.id === id ? { ...o, ...updates } : o))
         localStorage.setItem('namenote_text', JSON.stringify(next))
@@ -224,46 +231,90 @@ export default function App() {
     setMobileSide('R')
   }
 
-  // ── Overview ──────────────────────────────────────────────────
-  const handleReorder = useCallback(
-    (from: number, to: number) => {
+  // ── Individual page operations (overview panel) ───────────────
+  const handleReorderPages = useCallback(
+    (fromFlat: number, toFlat: number) => {
+      if (fromFlat === toFlat) return
       saveNow()
-      pageStore.reorderSpreads(from, to)
-      let next = currentSpread
-      if (from === currentSpread) next = to
-      else if (from < currentSpread && to >= currentSpread) next = currentSpread - 1
-      else if (from > currentSpread && to <= currentSpread) next = currentSpread + 1
-      if (next !== currentSpread) setCurrentSpread(next)
-      else pageStore.loadSpread(currentSpread, leftCanvasRef.current, rightCanvasRef.current)
-    },
-    [saveNow, pageStore, currentSpread],
-  )
-
-  const handleDeleteSpread = useCallback(
-    (at: number) => {
-      if (totalSpreads <= 1) return
-      saveNow()
-      pageStore.deleteSpreadAt(at)
-      const newTotal = totalSpreads - 1
-      setTotalSpreads(newTotal)
-      if (at < currentSpread) {
-        setCurrentSpread(currentSpread - 1)
-      } else if (at === currentSpread) {
-        const newCurrent = Math.min(currentSpread, newTotal - 1)
-        setCurrentSpread(newCurrent)
-        setMobileSide('R')
-        pageStore.loadSpread(newCurrent, leftCanvasRef.current, rightCanvasRef.current)
-      }
+      // Build old→new flat index mapping
+      const total = totalSpreads * 2
+      const arr = Array.from({ length: total }, (_, i) => i)
+      const [moved] = arr.splice(fromFlat, 1)
+      arr.splice(toFlat, 0, moved)
+      // arr[newFlat] = oldFlat  →  build reverse: oldFlat → newFlat
+      const oldToNew = new Map(arr.map((oldFlat, newFlat) => [oldFlat, newFlat]))
+      setTextObjects(prev => {
+        const next = prev.map(o => {
+          if (o.side === 'memo') return o
+          const oldFlat = o.spread * 2 + (o.side === 'right' ? 0 : 1)
+          const newFlat = oldToNew.get(oldFlat)
+          if (newFlat === undefined) return o
+          return {
+            ...o,
+            spread: Math.floor(newFlat / 2),
+            side: (newFlat % 2 === 0 ? 'right' : 'left') as 'left' | 'right',
+          }
+        })
+        localStorage.setItem('namenote_text', JSON.stringify(next))
+        return next
+      })
+      pageStore.reorderPages(fromFlat, toFlat)
+      pageStore.loadSpread(currentSpread, leftCanvasRef.current, rightCanvasRef.current)
     },
     [saveNow, pageStore, currentSpread, totalSpreads],
   )
 
-  const handleInsertAt = useCallback(
-    (at: number) => {
+  const handleDeletePage = useCallback(
+    (flatIndex: number) => {
       saveNow()
-      pageStore.insertSpreadAt(at)
-      setTotalSpreads(t => t + 1)
-      if (at <= currentSpread) setCurrentSpread(currentSpread + 1)
+      setTextObjects(prev => {
+        const next = prev
+          .filter(o => {
+            if (o.side === 'memo') return true
+            return o.spread * 2 + (o.side === 'right' ? 0 : 1) !== flatIndex
+          })
+          .map(o => {
+            if (o.side === 'memo') return o
+            const flat = o.spread * 2 + (o.side === 'right' ? 0 : 1)
+            if (flat > flatIndex) {
+              const nf = flat - 1
+              return { ...o, spread: Math.floor(nf / 2), side: (nf % 2 === 0 ? 'right' : 'left') as 'left' | 'right' }
+            }
+            return o
+          })
+        localStorage.setItem('namenote_text', JSON.stringify(next))
+        return next
+      })
+      const newCount = pageStore.deletePageAt(flatIndex)
+      setTotalSpreads(newCount)
+      const newSpread = Math.min(currentSpread, newCount - 1)
+      setCurrentSpread(newSpread)
+      setMobileSide('R')
+      pageStore.loadSpread(newSpread, leftCanvasRef.current, rightCanvasRef.current)
+    },
+    [saveNow, pageStore, currentSpread],
+  )
+
+  const handleInsertPage = useCallback(
+    (atFlat: number) => {
+      saveNow()
+      setTextObjects(prev => {
+        const next = prev.map(o => {
+          if (o.side === 'memo') return o
+          const flat = o.spread * 2 + (o.side === 'right' ? 0 : 1)
+          if (flat >= atFlat) {
+            const nf = flat + 1
+            return { ...o, spread: Math.floor(nf / 2), side: (nf % 2 === 0 ? 'right' : 'left') as 'left' | 'right' }
+          }
+          return o
+        })
+        localStorage.setItem('namenote_text', JSON.stringify(next))
+        return next
+      })
+      const newCount = pageStore.insertPageAt(atFlat)
+      setTotalSpreads(newCount)
+      // If inserted before current spread's first page, shift current spread
+      if (atFlat <= currentSpread * 2) setCurrentSpread(currentSpread + 1)
     },
     [saveNow, pageStore, currentSpread],
   )
@@ -292,8 +343,8 @@ export default function App() {
   // ── Keyboard shortcuts ───────────────────────────────────────
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // Don't capture shortcuts while typing in a text object
-      if ((e.target as HTMLElement).closest('.text-item__editor')) return
+      // Don't capture shortcuts while typing in the text editor
+      if ((e.target as HTMLElement).closest('.text-editor-textarea')) return
 
       if (e.key === 'p' && !e.ctrlKey && !e.metaKey) setTool(t => ({ ...t, type: 'pen' }))
       if (e.key === 'e' && !e.ctrlKey && !e.metaKey) setTool(t => ({ ...t, type: 'eraser' }))
@@ -527,7 +578,7 @@ export default function App() {
         textWritingMode={writingMode}
         onAddText={addTextObject}
         onUpdateText={updateTextObject}
-        onDeleteText={deleteTextObject}
+        onEditRequest={openTextEditor}
       />
 
       {/* Notebook spread */}
@@ -556,7 +607,7 @@ export default function App() {
           textWritingMode={writingMode}
           onAddText={addTextObject}
           onUpdateText={updateTextObject}
-          onDeleteText={deleteTextObject}
+          onEditRequest={openTextEditor}
         />
       </div>
 
@@ -636,14 +687,35 @@ export default function App() {
       <PageOverviewPanel
         isOpen={showOverview}
         onClose={() => setShowOverview(false)}
-        spreadCount={totalSpreads}
+        totalPages={totalSpreads * 2}
         currentSpread={currentSpread}
-        onNavigate={idx => goToSpread(idx)}
-        onReorder={handleReorder}
-        onInsertAt={handleInsertAt}
-        onDeleteSpread={handleDeleteSpread}
+        onNavigate={idx => { goToSpread(idx); setShowOverview(false) }}
+        onReorderPages={handleReorderPages}
+        onInsertPage={handleInsertPage}
+        onDeletePage={handleDeletePage}
         getThumbnail={pageStore.getThumbnail}
       />
+
+      {/* Text editor portal */}
+      {textEditorState && (() => {
+        const obj = textObjects.find(o => o.id === textEditorState.id)
+        if (!obj) return null
+        return createPortal(
+          <TextEditor
+            id={textEditorState.id}
+            initialText={obj.text}
+            fontSize={obj.fontSize}
+            writingMode={obj.writingMode}
+            color={obj.color}
+            screenX={textEditorState.screenX}
+            screenY={textEditorState.screenY}
+            onUpdate={updateTextObject}
+            onDelete={deleteTextObject}
+            onClose={() => setTextEditorState(null)}
+          />,
+          document.body,
+        )
+      })()}
 
       {/* Toast */}
       <Toast key={toastKey} message={toastMsg} />

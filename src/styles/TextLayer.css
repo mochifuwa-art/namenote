@@ -4,7 +4,7 @@
   inset: 0;
   z-index: 4;
   pointer-events: none;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .text-layer--active {
@@ -28,51 +28,4 @@
   outline: 1.5px dashed rgba(59, 130, 246, 0.65);
   outline-offset: 3px;
   border-radius: 2px;
-}
-
-/* ── Editing wrapper ──────────────────────────────────────────── */
-.text-item__edit-wrap {
-  position: absolute;
-  z-index: 6;
-}
-
-/* Delete button shown above the textarea while editing */
-.text-item__delete {
-  position: absolute;
-  top: -22px;
-  right: 0;
-  width: 22px;
-  height: 22px;
-  background: rgba(239, 68, 68, 0.88);
-  color: #fff;
-  border: none;
-  border-radius: 50%;
-  cursor: pointer;
-  font-size: 11px;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 7;
-  padding: 0;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.25);
-}
-
-.text-item__delete:hover {
-  background: rgba(220, 38, 38, 1);
-}
-
-/* Textarea used for editing text objects */
-.text-item__editor {
-  background: rgba(255, 254, 248, 0.92);
-  border: 1.5px solid rgba(59, 130, 246, 0.72);
-  border-radius: 3px;
-  outline: none;
-  resize: both;
-  padding: 3px 6px;
-  min-width: 60px;
-  min-height: 28px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
-  line-height: 1.5;
-  font-family: "Hiragino Mincho ProN", "游明朝", YuMincho, "ヒラギノ明朝 ProN", serif;
 }

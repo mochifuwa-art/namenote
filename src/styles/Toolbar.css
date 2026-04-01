@@ -148,34 +148,20 @@
   transform: scale(1.15);
 }
 
-/* ── Brush size buttons ────────────────────────────────────────── */
-.size-group {
-  gap: 1px;
-}
-
-.size-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: none;
-  border-radius: 5px;
-  background: transparent;
-  color: rgba(255, 255, 255, 0.6);
+/* ── Brush size slider ─────────────────────────────────────────── */
+.size-slider {
+  width: 96px;
+  accent-color: #60a5fa;
   cursor: pointer;
-  transition: background 0.1s;
   flex-shrink: 0;
-  -webkit-tap-highlight-color: transparent;
 }
 
-.size-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.size-btn.active {
-  background: rgba(96, 165, 250, 0.2);
-  color: #93c5fd;
+.size-label {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+  min-width: 30px;
+  text-align: center;
+  flex-shrink: 0;
 }
 
 /* ── Page navigation ──────────────────────────────────────────── */

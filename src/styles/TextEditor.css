@@ -1,0 +1,123 @@
+.text-editor-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1999;
+}
+
+.text-editor {
+  position: fixed;
+  z-index: 2000;
+  background: rgba(28, 20, 13, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.55);
+  min-width: 210px;
+}
+
+.text-editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-wrap: nowrap;
+}
+
+.text-editor-sizes {
+  display: flex;
+  gap: 1px;
+}
+
+.text-editor-size-btn {
+  min-width: 26px;
+  height: 26px;
+  padding: 0 3px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 10px;
+  cursor: pointer;
+  transition: background 0.1s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.text-editor-size-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.text-editor-size-btn.active {
+  background: rgba(96, 165, 250, 0.25);
+  color: #93c5fd;
+}
+
+.text-editor-sep {
+  width: 1px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.12);
+  margin: 0 3px;
+  flex-shrink: 0;
+}
+
+.text-editor-mode-btn {
+  min-width: 26px;
+  height: 26px;
+  padding: 0 4px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.1s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.text-editor-mode-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.text-editor-mode-btn.active {
+  background: rgba(96, 165, 250, 0.25);
+  color: #93c5fd;
+}
+
+.text-editor-delete-btn {
+  min-width: 26px;
+  height: 26px;
+  padding: 0 4px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: rgba(248, 113, 113, 0.8);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+  margin-left: auto;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.text-editor-delete-btn:hover {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+}
+
+.text-editor-textarea {
+  background: rgba(255, 254, 248, 0.94);
+  border: 1.5px solid rgba(59, 130, 246, 0.72);
+  border-radius: 4px;
+  outline: none;
+  resize: both;
+  padding: 5px 8px;
+  min-width: 160px;
+  min-height: 64px;
+  line-height: 1.5;
+}
+
+.text-editor-textarea::placeholder {
+  color: rgba(100, 90, 70, 0.4);
+}

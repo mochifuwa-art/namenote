@@ -1,32 +1,35 @@
 import { useState, useRef, useEffect } from 'react'
 import '../styles/PageOverview.css'
 
+// flat index: 0 = spread 0, side R (p.1); 1 = spread 0, side L (p.2); etc.
+const flatToSpread = (i: number) => Math.floor(i / 2)
+const flatToSide = (i: number): 'L' | 'R' => (i % 2 === 0 ? 'R' : 'L')
+
 interface Props {
   isOpen: boolean
   onClose: () => void
-  spreadCount: number
+  totalPages: number   // spreadCount * 2
   currentSpread: number
-  onNavigate: (index: number) => void
-  onReorder: (from: number, to: number) => void
-  onInsertAt: (at: number) => void
-  onDeleteSpread: (index: number) => void
-  getThumbnail: (index: number, side: 'L' | 'R') => string | null
+  onNavigate: (spreadIndex: number) => void
+  onReorderPages: (fromFlat: number, toFlat: number) => void
+  onInsertPage: (atFlat: number) => void
+  onDeletePage: (flatIndex: number) => void
+  getThumbnail: (spreadIndex: number, side: 'L' | 'R') => string | null
 }
 
 export default function PageOverviewPanel({
   isOpen,
   onClose,
-  spreadCount,
+  totalPages,
   currentSpread,
   onNavigate,
-  onReorder,
-  onInsertAt,
-  onDeleteSpread,
+  onReorderPages,
+  onInsertPage,
+  onDeletePage,
   getThumbnail,
 }: Props) {
   const [dragging, setDragging] = useState<number | null>(null)
   const [dropPos, setDropPos] = useState<number | null>(null)
-  // Bump to force thumbnail re-read after mutations
   const [version, setVersion] = useState(0)
 
   const gridRef = useRef<HTMLDivElement>(null)
@@ -38,27 +41,24 @@ export default function PageOverviewPanel({
     active: boolean
   }>({ index: -1, startX: 0, startY: 0, active: false })
 
-  // ── Compute which insert-zone the pointer is closest to ───────────
   const getDropPos = (clientX: number, clientY: number): number => {
     const map = cardElsRef.current
-    for (let i = 0; i < spreadCount; i++) {
+    for (let i = 0; i < totalPages; i++) {
       const el = map.get(i)
       if (!el) continue
       const rect = el.getBoundingClientRect()
-      if (clientY < rect.top) return i                              // above this card's row
+      if (clientY < rect.top) return i
       if (clientY <= rect.bottom) {
-        // RTL display: right of card center → insert before (zone i), left → after (zone i+1)
         return clientX >= rect.left + rect.width / 2 ? i : i + 1
       }
     }
-    return spreadCount
+    return totalPages
   }
 
-  // ── Pointer handlers on the grid container ────────────────────────
   const handleGridPointerDown = (e: React.PointerEvent) => {
     const target = e.target as HTMLElement
-    if (target.closest('[data-insert-btn]')) return  // let insert buttons handle themselves
-    if (target.closest('[data-delete-btn]')) return  // let delete buttons handle themselves
+    if (target.closest('[data-insert-btn]')) return
+    if (target.closest('[data-delete-btn]')) return
     const cardEl = target.closest('[data-card-idx]') as HTMLElement | null
     if (!cardEl) return
     const idx = parseInt(cardEl.dataset.cardIdx!)
@@ -72,7 +72,7 @@ export default function PageOverviewPanel({
     if (ds.index === -1) return
     const dx = e.clientX - ds.startX
     const dy = e.clientY - ds.startY
-    if (!ds.active && dx * dx + dy * dy < 64) return  // 8px threshold
+    if (!ds.active && dx * dx + dy * dy < 64) return
     if (!ds.active) {
       ds.active = true
       setDragging(ds.index)
@@ -91,25 +91,20 @@ export default function PageOverviewPanel({
     setDropPos(null)
 
     if (!wasActive && from !== -1) {
-      // Tap → navigate
-      onNavigate(from)
+      onNavigate(flatToSpread(from))
       onClose()
       return
     }
 
     if (wasActive && from !== -1 && pos !== null) {
-      // Drop → reorder
-      // `pos` is the insert-zone index (0..spreadCount).
-      // Convert to the final array index for reorderSpreads:
       const to = pos > from ? pos - 1 : pos
       if (from !== to) {
-        onReorder(from, to)
+        onReorderPages(from, to)
         setVersion(v => v + 1)
       }
     }
   }
 
-  // ── Keyboard close ────────────────────────────────────────────────
   useEffect(() => {
     if (!isOpen) return
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -119,7 +114,8 @@ export default function PageOverviewPanel({
 
   if (!isOpen) return null
 
-  // ── Build grid items ──────────────────────────────────────────────
+  void version
+
   const items: React.ReactNode[] = []
 
   const insertZone = (pos: number) => (
@@ -129,7 +125,7 @@ export default function PageOverviewPanel({
       className={`ov-insert${dropPos === pos && dragging !== null ? ' drop-here' : ''}`}
       onClick={e => {
         e.stopPropagation()
-        onInsertAt(pos)
+        onInsertPage(pos)
         setVersion(v => v + 1)
       }}
     >
@@ -139,11 +135,11 @@ export default function PageOverviewPanel({
 
   items.push(insertZone(0))
 
-  for (let i = 0; i < spreadCount; i++) {
-    const rightThumb = getThumbnail(i, 'R')
-    const leftThumb  = getThumbnail(i, 'L')
-    // version is referenced so thumbnails re-read after mutations
-    void version
+  for (let i = 0; i < totalPages; i++) {
+    const spread = flatToSpread(i)
+    const side = flatToSide(i)
+    const thumb = getThumbnail(spread, side)
+    const isCurrent = spread === currentSpread
 
     items.push(
       <div
@@ -154,57 +150,40 @@ export default function PageOverviewPanel({
           else cardElsRef.current.delete(i)
         }}
         className={[
-          'ov-card',
-          i === currentSpread ? 'ov-card--current' : '',
+          'ov-card ov-card--page',
+          isCurrent ? 'ov-card--current' : '',
           dragging === i ? 'ov-card--dragging' : '',
         ].filter(Boolean).join(' ')}
       >
-        {/* Drag handle (top-right corner) */}
         <div className="ov-drag-handle" title="ドラッグして並べ替え">⠿</div>
 
-        {/* Delete button (top-left corner, hidden until hover) */}
-        {spreadCount > 1 && (
+        {totalPages > 2 && (
           <button
             data-delete-btn="true"
             className="ov-delete-btn"
-            title="このスプレッドを削除"
+            title="このページを削除"
             onClick={e => {
               e.stopPropagation()
-              if (window.confirm(`スプレッド ${i + 1}（p.${i * 2 + 1}–${i * 2 + 2}）を削除しますか？\nこの操作は元に戻せません。`)) {
-                onDeleteSpread(i)
+              if (window.confirm(`p.${i + 1} を削除しますか？\nこの操作は元に戻せません。`)) {
+                onDeletePage(i)
                 setVersion(v => v + 1)
               }
             }}
           >✕</button>
         )}
 
-        {/* Page thumbnails: left page on left, right page on right (matches open-book layout) */}
-        <div className="ov-pages">
-          {/* Left page (even) */}
-          <div className="ov-page">
-            <div className="ov-thumb">
-              {leftThumb
-                ? <img src={leftThumb} alt="" draggable={false} />
-                : <div className="ov-thumb-blank" />
-              }
-            </div>
-            <span className="ov-page-num">p.{i * 2 + 2}</span>
-          </div>
-          {/* Right page (odd) */}
-          <div className="ov-page">
-            <div className="ov-thumb">
-              {rightThumb
-                ? <img src={rightThumb} alt="" draggable={false} />
-                : <div className="ov-thumb-blank" />
-              }
-            </div>
-            <span className="ov-page-num">p.{i * 2 + 1}</span>
+        <div className="ov-page ov-page--single">
+          <div className="ov-thumb">
+            {thumb
+              ? <img src={thumb} alt="" draggable={false} />
+              : <div className="ov-thumb-blank" />
+            }
           </div>
         </div>
 
         <div className="ov-card-footer">
-          {i === currentSpread && <span className="ov-current-badge">表示中</span>}
-          <span className="ov-spread-label">スプレッド {i + 1}</span>
+          {isCurrent && <span className="ov-current-badge">表示中</span>}
+          <span className="ov-spread-label">p.{i + 1}</span>
         </div>
       </div>
     )
@@ -216,7 +195,7 @@ export default function PageOverviewPanel({
     <div className="ov-backdrop" onClick={onClose}>
       <div className="ov-panel" onClick={e => e.stopPropagation()}>
         <div className="ov-header">
-          <span className="ov-title">ページ一覧 ({spreadCount} スプレッド)</span>
+          <span className="ov-title">ページ一覧 ({totalPages} ページ)</span>
           <button className="ov-close-btn" onClick={onClose}>✕ 閉じる</button>
         </div>
 
