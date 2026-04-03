@@ -14,9 +14,9 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  background: #f5f0e8;
-  border-right: 1px solid rgba(0, 0, 0, 0.12);
-  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.15);
+  background: #f4efe6;
+  border-right: 1px solid rgba(0, 0, 0, 0.10);
+  box-shadow: 2px 0 12px rgba(0, 0, 0, 0.12);
   transition: width 0.2s ease, opacity 0.2s ease;
 }
 
@@ -28,15 +28,17 @@
 
 .memo-sidebar__header {
   flex-shrink: 0;
-  height: 64px;
+  height: 44px;
   display: flex;
   align-items: center;
-  padding: 0 12px;
-  background: rgba(0, 0, 0, 0.04);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-  font-size: 12px;
-  color: rgba(0, 0, 0, 0.45);
-  letter-spacing: 0.05em;
+  padding: 0 14px;
+  background: rgba(0, 0, 0, 0.035);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.38);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   user-select: none;
 }
 
@@ -45,24 +47,29 @@
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: auto;
-  scrollbar-color: rgba(0, 0, 0, 0.30) rgba(0, 0, 0, 0.05);
+  scrollbar-color: rgba(0, 0, 0, 0.25) rgba(0, 0, 0, 0.04);
 }
 
 .memo-sidebar__scroll::-webkit-scrollbar {
-  width: 12px;
+  display: block;
+  width: 10px;
 }
 
 .memo-sidebar__scroll::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.05);
-  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.04);
 }
 
 .memo-sidebar__scroll::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.30);
-  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.22);
+  border-radius: 5px;
   border: 2px solid transparent;
   background-clip: padding-box;
-  min-height: 60px; /* large enough to touch on tablet */
+  min-height: 60px;
+}
+
+.memo-sidebar__scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.35);
+  background-clip: padding-box;
 }
 
 .memo-sidebar__canvas-wrap {
@@ -85,32 +92,34 @@
 .memo-sidebar__toggle {
   position: absolute;
   top: 50%;
-  right: -28px;
+  right: -26px;
   transform: translateY(-50%);
-  width: 28px;
-  height: 56px;
-  background: #f5f0e8;
-  border: 1px solid rgba(0, 0, 0, 0.12);
+  width: 26px;
+  height: 52px;
+  background: #f4efe6;
+  border: 1px solid rgba(0, 0, 0, 0.10);
   border-left: none;
-  border-radius: 0 6px 6px 0;
+  border-radius: 0 7px 7px 0;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 2px 0 6px rgba(0, 0, 0, 0.12);
-  color: rgba(0, 0, 0, 0.5);
-  font-size: 12px;
-  transition: background 0.15s;
+  box-shadow: 3px 0 8px rgba(0, 0, 0, 0.10);
+  color: rgba(0, 0, 0, 0.4);
+  font-size: 11px;
+  transition: background 0.15s, color 0.15s;
   z-index: 201;
   flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .memo-sidebar__toggle:hover {
   background: #ede8df;
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .memo-sidebar__toggle--collapsed {
-  right: -28px;
-  border-left: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 6px;
+  right: -26px;
+  border-left: 1px solid rgba(0, 0, 0, 0.10);
+  border-radius: 7px;
 }
