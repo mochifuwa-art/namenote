@@ -18,7 +18,7 @@ interface MemoSidebarProps {
   textWritingMode: TextWritingMode
   onAddText: (obj: TextObject) => void
   onUpdateText: (id: string, updates: Partial<Pick<TextObject, 'x' | 'y' | 'text'>>) => void
-  onDeleteText: (id: string) => void
+  onEditRequest: (id: string, screenX: number, screenY: number) => void
 }
 
 const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
@@ -34,7 +34,7 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
       textWritingMode,
       onAddText,
       onUpdateText,
-      onDeleteText,
+      onEditRequest,
     },
     canvasRef,
   ) => {
@@ -155,7 +155,7 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
                 writingMode={textWritingMode}
                 onAdd={onAddText}
                 onUpdate={onUpdateText}
-                onDelete={onDeleteText}
+                onEditRequest={onEditRequest}
               />
             </div>
           </div>

@@ -134,6 +134,81 @@ export function usePageStore() {
     setSpreadCount(count - 1)
   }, [setSpreadCount])
 
+  // ── Individual-page operations (flat index: 0=spread0R, 1=spread0L, 2=spread1R, …) ──
+
+  const reorderPages = useCallback((fromFlat: number, toFlat: number) => {
+    if (fromFlat === toFlat) return
+    const count = spreadCountRef.current
+    const totalPages = count * 2
+    const pages: (string | null)[] = []
+    for (let i = 0; i < totalPages; i++) {
+      const s = Math.floor(i / 2)
+      const side: 'L' | 'R' = i % 2 === 0 ? 'R' : 'L'
+      pages.push(localStorage.getItem(pageKey(s, side)))
+    }
+    const [moved] = pages.splice(fromFlat, 1)
+    pages.splice(toFlat, 0, moved)
+    for (let i = 0; i < pages.length; i++) {
+      const s = Math.floor(i / 2)
+      const side: 'L' | 'R' = i % 2 === 0 ? 'R' : 'L'
+      const k = pageKey(s, side)
+      if (pages[i]) localStorage.setItem(k, pages[i]!)
+      else localStorage.removeItem(k)
+    }
+  }, [])
+
+  /** Remove the page at flatIndex, shift subsequent pages left. Returns new spread count. */
+  const deletePageAt = useCallback((flatIndex: number): number => {
+    const count = spreadCountRef.current
+    const totalPages = count * 2
+    const pages: (string | null)[] = []
+    for (let i = 0; i < totalPages; i++) {
+      const s = Math.floor(i / 2)
+      const side: 'L' | 'R' = i % 2 === 0 ? 'R' : 'L'
+      pages.push(localStorage.getItem(pageKey(s, side)))
+    }
+    pages.splice(flatIndex, 1)
+    // Write back; last slot will be gone (last spread may become half-empty)
+    const newCount = Math.max(1, Math.ceil(pages.length / 2))
+    const newTotalSlots = newCount * 2
+    for (let i = 0; i < newTotalSlots; i++) {
+      const s = Math.floor(i / 2)
+      const side: 'L' | 'R' = i % 2 === 0 ? 'R' : 'L'
+      const k = pageKey(s, side)
+      const data = pages[i] ?? null
+      if (data) localStorage.setItem(k, data)
+      else localStorage.removeItem(k)
+    }
+    setSpreadCount(newCount)
+    return newCount
+  }, [setSpreadCount])
+
+  /** Insert a blank page before flatIndex, shift subsequent pages right. Returns new spread count. */
+  const insertPageAt = useCallback((flatIndex: number): number => {
+    const count = spreadCountRef.current
+    const totalPages = count * 2
+    const pages: (string | null)[] = []
+    for (let i = 0; i < totalPages; i++) {
+      const s = Math.floor(i / 2)
+      const side: 'L' | 'R' = i % 2 === 0 ? 'R' : 'L'
+      pages.push(localStorage.getItem(pageKey(s, side)))
+    }
+    pages.splice(flatIndex, 0, null)
+    const newCount = Math.ceil(pages.length / 2)
+    const newTotalSlots = newCount * 2
+    // Pad to even length
+    while (pages.length < newTotalSlots) pages.push(null)
+    for (let i = 0; i < newTotalSlots; i++) {
+      const s = Math.floor(i / 2)
+      const side: 'L' | 'R' = i % 2 === 0 ? 'R' : 'L'
+      const k = pageKey(s, side)
+      if (pages[i]) localStorage.setItem(k, pages[i]!)
+      else localStorage.removeItem(k)
+    }
+    setSpreadCount(newCount)
+    return newCount
+  }, [setSpreadCount])
+
   const insertSpreadAt = useCallback((at: number) => {
     const count = spreadCountRef.current
     for (let i = count - 1; i >= at; i--) {
@@ -180,6 +255,9 @@ export function usePageStore() {
     reorderSpreads,
     insertSpreadAt,
     deleteSpreadAt,
+    reorderPages,
+    deletePageAt,
+    insertPageAt,
     loadAllFromProjectData,
   }
 }

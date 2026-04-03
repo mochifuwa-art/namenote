@@ -18,7 +18,7 @@ interface NotebookSpreadProps {
   textWritingMode: TextWritingMode
   onAddText: (obj: TextObject) => void
   onUpdateText: (id: string, updates: Partial<Pick<TextObject, 'x' | 'y' | 'text'>>) => void
-  onDeleteText: (id: string) => void
+  onEditRequest: (id: string, screenX: number, screenY: number) => void
 }
 
 const NotebookSpread = forwardRef<HTMLDivElement, NotebookSpreadProps>(
@@ -36,7 +36,7 @@ const NotebookSpread = forwardRef<HTMLDivElement, NotebookSpreadProps>(
       textWritingMode,
       onAddText,
       onUpdateText,
-      onDeleteText,
+      onEditRequest,
     },
     ref,
   ) => {
@@ -72,7 +72,7 @@ const NotebookSpread = forwardRef<HTMLDivElement, NotebookSpreadProps>(
             writingMode={textWritingMode}
             onAdd={onAddText}
             onUpdate={onUpdateText}
-            onDelete={onDeleteText}
+            onEditRequest={onEditRequest}
           />
           <span className="notebook-page-num notebook-page-num-left">{leftPageNum}</span>
         </div>
@@ -93,7 +93,7 @@ const NotebookSpread = forwardRef<HTMLDivElement, NotebookSpreadProps>(
             writingMode={textWritingMode}
             onAdd={onAddText}
             onUpdate={onUpdateText}
-            onDelete={onDeleteText}
+            onEditRequest={onEditRequest}
           />
           <span className="notebook-page-num notebook-page-num-right">{rightPageNum}</span>
           <div className="notebook-binding-edge" />
