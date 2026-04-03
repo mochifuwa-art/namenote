@@ -712,7 +712,7 @@ export default function App() {
           top: 0,
           left: tool.type === 'lasso' ? 0 : sidebarW,
           right: 0,
-          bottom: 0,
+          bottom: tool.type === 'lasso' ? '64px' : 0,
           zIndex: tool.type === 'lasso' ? 202 : 100,
           cursor,
           touchAction: 'none',

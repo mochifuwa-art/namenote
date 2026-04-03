@@ -11,9 +11,5 @@
 			"backgroundColor": "#4a3828"
 		}
 	},
-	"packageClassList": [
-		"FilesystemPlugin",
-		"SharePlugin",
-		"StatusBarPlugin"
-	]
+	"packageClassList": []
 }
