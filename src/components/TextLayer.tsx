@@ -12,10 +12,14 @@ interface TextLayerProps {
   color: string
   fontSize: number
   writingMode: TextWritingMode
+  /** ID of text object currently being dragged cross-area (hide it here, show ghost in App) */
+  draggingId?: string
   onAdd: (obj: TextObject) => void
   onUpdate: (id: string, updates: Partial<Pick<TextObject, 'x' | 'y' | 'text'>>) => void
   /** Called when user taps on empty area or existing text object — opens the portal editor */
   onEditRequest: (id: string, screenX: number, screenY: number) => void
+  /** Called when a drag gesture leaves this layer's bounds — App takes over the drag */
+  onBeginCrossAreaDrag?: (obj: TextObject, pointerId: number, clientX: number, clientY: number) => void
 }
 
 export default function TextLayer({
@@ -28,9 +32,11 @@ export default function TextLayer({
   color,
   fontSize,
   writingMode,
+  draggingId,
   onAdd,
   onUpdate,
   onEditRequest,
+  onBeginCrossAreaDrag,
 }: TextLayerProps) {
   const layerRef = useRef<HTMLDivElement>(null)
 
@@ -71,8 +77,10 @@ export default function TextLayer({
           obj={obj}
           isActive={isActive}
           canvasWidth={canvasWidth}
+          hidden={obj.id === draggingId}
           onMove={(x, y) => onUpdate(obj.id, { x, y })}
           onEditRequest={(sx, sy) => onEditRequest(obj.id, sx, sy)}
+          onBeginCrossAreaDrag={onBeginCrossAreaDrag}
         />
       ))}
     </div>
@@ -85,11 +93,14 @@ interface TextItemProps {
   obj: TextObject
   isActive: boolean
   canvasWidth: number
+  hidden?: boolean
   onMove: (x: number, y: number) => void
   onEditRequest: (screenX: number, screenY: number) => void
+  onBeginCrossAreaDrag?: (obj: TextObject, pointerId: number, clientX: number, clientY: number) => void
 }
 
-function TextItem({ obj, isActive, canvasWidth, onMove, onEditRequest }: TextItemProps) {
+function TextItem({ obj, isActive, canvasWidth, hidden, onMove, onEditRequest, onBeginCrossAreaDrag }: TextItemProps) {
+  const elemRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<{
     startPx: number
     startPy: number
@@ -97,6 +108,7 @@ function TextItem({ obj, isActive, canvasWidth, onMove, onEditRequest }: TextIte
     origY: number
     scale: number
     moved: boolean
+    pointerId: number
   } | null>(null)
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -114,6 +126,7 @@ function TextItem({ obj, isActive, canvasWidth, onMove, onEditRequest }: TextIte
       origY: obj.y,
       scale,
       moved: false,
+      pointerId: e.pointerId,
     }
   }
 
@@ -123,6 +136,23 @@ function TextItem({ obj, isActive, canvasWidth, onMove, onEditRequest }: TextIte
     const dy = (e.clientY - dragRef.current.startPy) / dragRef.current.scale
     if (Math.abs(dx) + Math.abs(dy) > 3) {
       dragRef.current.moved = true
+
+      // Detect if pointer left the layer bounds → switch to cross-area drag
+      if (onBeginCrossAreaDrag) {
+        const layer = (e.currentTarget as HTMLElement).closest('.text-layer') as HTMLElement
+        const layerRect = layer.getBoundingClientRect()
+        const outside =
+          e.clientX < layerRect.left - 10 || e.clientX > layerRect.right + 10 ||
+          e.clientY < layerRect.top - 10 || e.clientY > layerRect.bottom + 10
+        if (outside) {
+          const pid = dragRef.current.pointerId
+          dragRef.current = null
+          ;(e.currentTarget as HTMLElement).releasePointerCapture(pid)
+          onBeginCrossAreaDrag(obj, pid, e.clientX, e.clientY)
+          return
+        }
+      }
+
       onMove(dragRef.current.origX + dx, dragRef.current.origY + dy)
     }
   }
@@ -139,6 +169,7 @@ function TextItem({ obj, isActive, canvasWidth, onMove, onEditRequest }: TextIte
 
   return (
     <div
+      ref={elemRef}
       className={`text-item${isActive ? ' text-item--active' : ''}`}
       style={{
         position: 'absolute',
@@ -155,6 +186,7 @@ function TextItem({ obj, isActive, canvasWidth, onMove, onEditRequest }: TextIte
         pointerEvents: isActive ? 'all' : 'none',
         userSelect: 'none',
         cursor: isActive ? 'move' : 'default',
+        opacity: hidden ? 0 : 1,
       }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}

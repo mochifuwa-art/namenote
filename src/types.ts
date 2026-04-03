@@ -21,6 +21,7 @@ export interface DrawingTool {
 
 export type DrawTarget =
   | { kind: 'page'; side: 'left' | 'right' }
+  | { kind: 'memo' }
 
 export interface SelectionClipboard {
   canvas: HTMLCanvasElement  // 切り取ったピクセルを持つ一時canvas

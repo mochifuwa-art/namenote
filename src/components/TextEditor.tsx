@@ -109,6 +109,7 @@ export default function TextEditor({
           ref={textRef}
           className="text-editor-textarea"
           defaultValue={initialText}
+          autoFocus
           onChange={handleTextChange}
           onKeyDown={handleKeyDown}
           style={{

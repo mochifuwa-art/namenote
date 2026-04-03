@@ -16,9 +16,11 @@ interface MemoSidebarProps {
   textColor: string
   textFontSize: number
   textWritingMode: TextWritingMode
+  draggingTextId?: string
   onAddText: (obj: TextObject) => void
   onUpdateText: (id: string, updates: Partial<Pick<TextObject, 'x' | 'y' | 'text'>>) => void
   onEditRequest: (id: string, screenX: number, screenY: number) => void
+  onBeginCrossAreaDrag?: (obj: TextObject, pointerId: number, clientX: number, clientY: number) => void
 }
 
 const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
@@ -32,9 +34,11 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
       textColor,
       textFontSize,
       textWritingMode,
+      draggingTextId,
       onAddText,
       onUpdateText,
       onEditRequest,
+      onBeginCrossAreaDrag,
     },
     canvasRef,
   ) => {
@@ -153,9 +157,11 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
                 color={textColor}
                 fontSize={textFontSize}
                 writingMode={textWritingMode}
+                draggingId={draggingTextId}
                 onAdd={onAddText}
                 onUpdate={onUpdateText}
                 onEditRequest={onEditRequest}
+                onBeginCrossAreaDrag={onBeginCrossAreaDrag}
               />
             </div>
           </div>
