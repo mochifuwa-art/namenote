@@ -185,6 +185,7 @@ function TextItem({ obj, isActive, canvasWidth, hidden, onMove, onEditRequest, o
         zIndex: 5,
         pointerEvents: isActive ? 'all' : 'none',
         userSelect: 'none',
+        touchAction: isActive ? 'none' : 'auto',
         cursor: isActive ? 'move' : 'default',
         opacity: hidden ? 0 : 1,
       }}
