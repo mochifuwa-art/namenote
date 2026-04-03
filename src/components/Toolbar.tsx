@@ -226,7 +226,7 @@ export default function Toolbar({
             </button>
           </div>
         </>
-      ) : (
+      ) : (tool.type === 'pen' || tool.type === 'eraser') ? (
         <div className="toolbar-group">
           <input
             type="range"
@@ -239,7 +239,7 @@ export default function Toolbar({
           />
           <span className="size-label">{tool.size}px</span>
         </div>
-      )}
+      ) : null}
 
       <div className="toolbar-sep" />
 

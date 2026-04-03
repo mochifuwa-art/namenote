@@ -43,6 +43,22 @@ export default function PageOverviewPanel({
 
   const getDropPos = (clientX: number, clientY: number): number => {
     const map = cardElsRef.current
+
+    // First pass: find the card the pointer is directly over (both x and y match)
+    for (let i = 0; i < totalPages; i++) {
+      const el = map.get(i)
+      if (!el) continue
+      const rect = el.getBoundingClientRect()
+      if (
+        clientY >= rect.top && clientY <= rect.bottom &&
+        clientX >= rect.left && clientX <= rect.right
+      ) {
+        // RTL layout: right half → insert before (position i), left half → insert after (position i+1)
+        return clientX >= rect.left + rect.width / 2 ? i : i + 1
+      }
+    }
+
+    // Second pass: pointer is in a gap/insert-zone. Use row-based fallback.
     for (let i = 0; i < totalPages; i++) {
       const el = map.get(i)
       if (!el) continue
