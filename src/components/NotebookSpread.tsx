@@ -16,9 +16,11 @@ interface NotebookSpreadProps {
   textColor: string
   textFontSize: number
   textWritingMode: TextWritingMode
+  draggingTextId?: string
   onAddText: (obj: TextObject) => void
   onUpdateText: (id: string, updates: Partial<Pick<TextObject, 'x' | 'y' | 'text'>>) => void
   onEditRequest: (id: string, screenX: number, screenY: number) => void
+  onBeginCrossAreaDrag?: (obj: TextObject, pointerId: number, clientX: number, clientY: number) => void
 }
 
 const NotebookSpread = forwardRef<HTMLDivElement, NotebookSpreadProps>(
@@ -34,9 +36,11 @@ const NotebookSpread = forwardRef<HTMLDivElement, NotebookSpreadProps>(
       textColor,
       textFontSize,
       textWritingMode,
+      draggingTextId,
       onAddText,
       onUpdateText,
       onEditRequest,
+      onBeginCrossAreaDrag,
     },
     ref,
   ) => {
@@ -70,9 +74,11 @@ const NotebookSpread = forwardRef<HTMLDivElement, NotebookSpreadProps>(
             color={textColor}
             fontSize={textFontSize}
             writingMode={textWritingMode}
+            draggingId={draggingTextId}
             onAdd={onAddText}
             onUpdate={onUpdateText}
             onEditRequest={onEditRequest}
+            onBeginCrossAreaDrag={onBeginCrossAreaDrag}
           />
           <span className="notebook-page-num notebook-page-num-left">{leftPageNum}</span>
         </div>
@@ -91,9 +97,11 @@ const NotebookSpread = forwardRef<HTMLDivElement, NotebookSpreadProps>(
             color={textColor}
             fontSize={textFontSize}
             writingMode={textWritingMode}
+            draggingId={draggingTextId}
             onAdd={onAddText}
             onUpdate={onUpdateText}
             onEditRequest={onEditRequest}
+            onBeginCrossAreaDrag={onBeginCrossAreaDrag}
           />
           <span className="notebook-page-num notebook-page-num-right">{rightPageNum}</span>
           <div className="notebook-binding-edge" />

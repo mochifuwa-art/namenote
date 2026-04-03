@@ -42,6 +42,11 @@ export default function App() {
   const [writingMode, setWritingMode] = useState<TextWritingMode>('horizontal-tb')
   const [textFontSize, setTextFontSize] = useState(18)
   const [textEditorState, setTextEditorState] = useState<{ id: string; screenX: number; screenY: number } | null>(null)
+  const [crossAreaDrag, setCrossAreaDrag] = useState<{ obj: TextObject; clientX: number; clientY: number } | null>(null)
+
+  // Stable ref to always-current textObjects for history callbacks
+  const textObjectsRef = useRef<TextObject[]>([])
+  useEffect(() => { textObjectsRef.current = textObjects }, [textObjects])
 
   const openTextEditor = useCallback((id: string, screenX: number, screenY: number) => {
     setTextEditorState({ id, screenX, screenY })
@@ -72,7 +77,6 @@ export default function App() {
   }, [])
 
   const pageStore = usePageStore()
-  const history = useHistory(leftCanvasRef, rightCanvasRef)
 
   // ── Auto-save ────────────────────────────────────────────────
   const markUnsaved = useCallback(() => {
@@ -94,9 +98,22 @@ export default function App() {
     setTimeout(() => setSaveStatus('saved'), 400)
   }, [currentSpread, pageStore])
 
+  const history = useHistory(
+    leftCanvasRef,
+    rightCanvasRef,
+    memoCanvasRef,
+    () => textObjectsRef.current,
+    (snapshot) => {
+      setTextObjects(snapshot)
+      localStorage.setItem('namenote_text', JSON.stringify(snapshot))
+      markUnsaved()
+    },
+  )
+
   // ── Text object handlers ──────────────────────────────────────
   const addTextObject = useCallback(
     (obj: TextObject) => {
+      history.pushText()
       setTextObjects(prev => {
         const next = [...prev, obj]
         localStorage.setItem('namenote_text', JSON.stringify(next))
@@ -104,11 +121,12 @@ export default function App() {
       })
       markUnsaved()
     },
-    [markUnsaved],
+    [markUnsaved, history],
   )
 
+  // Accepts any partial TextObject fields (including side/spread for cross-area move)
   const updateTextObject = useCallback(
-    (id: string, updates: Partial<Pick<TextObject, 'x' | 'y' | 'text' | 'fontSize' | 'writingMode'>>) => {
+    (id: string, updates: Partial<Omit<TextObject, 'id'>>) => {
       setTextObjects(prev => {
         const next = prev.map(o => (o.id === id ? { ...o, ...updates } : o))
         localStorage.setItem('namenote_text', JSON.stringify(next))
@@ -121,6 +139,7 @@ export default function App() {
 
   const deleteTextObject = useCallback(
     (id: string) => {
+      history.pushText()
       setTextObjects(prev => {
         const next = prev.filter(o => o.id !== id)
         localStorage.setItem('namenote_text', JSON.stringify(next))
@@ -128,7 +147,7 @@ export default function App() {
       })
       markUnsaved()
     },
-    [markUnsaved],
+    [markUnsaved, history],
   )
 
   // ── Drawing ──────────────────────────────────────────────────
@@ -148,6 +167,7 @@ export default function App() {
     overlayDivRef: overlayRef,
     leftCanvasRef,
     rightCanvasRef,
+    memoCanvasRef,
     enabled: tool.type === 'lasso',
     onBeforeEdit: history.push,
     onSelectionChange: active => setSelectionActive(active),
@@ -339,6 +359,62 @@ export default function App() {
       overlayCanvasRef.current.height = window.innerHeight
     }
   }, [])
+
+  // ── Cross-area text drag ──────────────────────────────────────
+  const handleBeginCrossAreaDrag = useCallback(
+    (obj: TextObject, pointerId: number, clientX: number, clientY: number) => {
+      setCrossAreaDrag({ obj, clientX, clientY })
+
+      const onMove = (e: PointerEvent) => {
+        if (e.pointerId !== pointerId) return
+        setCrossAreaDrag(prev => prev ? { ...prev, clientX: e.clientX, clientY: e.clientY } : null)
+      }
+
+      const onUp = (e: PointerEvent) => {
+        if (e.pointerId !== pointerId) return
+        window.removeEventListener('pointermove', onMove)
+        window.removeEventListener('pointerup', onUp)
+        setCrossAreaDrag(null)
+
+        // Determine target area and convert coordinates
+        const memoRect = memoCanvasRef.current?.getBoundingClientRect()
+        const leftRect = leftCanvasRef.current?.getBoundingClientRect()
+        const rightRect = rightCanvasRef.current?.getBoundingClientRect()
+
+        let newSide: 'left' | 'right' | 'memo' | null = null
+        let newSpread = currentSpread
+        let newX = 0, newY = 0
+
+        const inRect = (r: DOMRect) =>
+          e.clientX >= r.left && e.clientX <= r.right &&
+          e.clientY >= r.top  && e.clientY <= r.bottom
+
+        if (memoRect && inRect(memoRect)) {
+          newSide = 'memo'
+          newSpread = 0
+          newX = (e.clientX - memoRect.left) * (260 / memoRect.width)
+          newY = (e.clientY - memoRect.top)  * (4000 / memoRect.height)
+        } else if (leftRect && inRect(leftRect)) {
+          newSide = 'left'
+          newX = (e.clientX - leftRect.left) * (PAGE_WIDTH / leftRect.width)
+          newY = (e.clientY - leftRect.top)  * (PAGE_HEIGHT / leftRect.height)
+        } else if (rightRect && inRect(rightRect)) {
+          newSide = 'right'
+          newX = (e.clientX - rightRect.left) * (PAGE_WIDTH / rightRect.width)
+          newY = (e.clientY - rightRect.top)  * (PAGE_HEIGHT / rightRect.height)
+        } else {
+          return  // dropped outside — keep original position
+        }
+
+        history.pushText()
+        updateTextObject(obj.id, { side: newSide, spread: newSpread, x: newX, y: newY })
+      }
+
+      window.addEventListener('pointermove', onMove)
+      window.addEventListener('pointerup', onUp)
+    },
+    [currentSpread, memoCanvasRef, leftCanvasRef, rightCanvasRef, history, updateTextObject],
+  )
 
   // ── Keyboard shortcuts ───────────────────────────────────────
   useEffect(() => {
@@ -576,9 +652,11 @@ export default function App() {
         textColor={tool.color}
         textFontSize={textFontSize}
         textWritingMode={writingMode}
+        draggingTextId={crossAreaDrag?.obj.id}
         onAddText={addTextObject}
         onUpdateText={updateTextObject}
         onEditRequest={openTextEditor}
+        onBeginCrossAreaDrag={handleBeginCrossAreaDrag}
       />
 
       {/* Notebook spread */}
@@ -605,13 +683,15 @@ export default function App() {
           textColor={tool.color}
           textFontSize={textFontSize}
           textWritingMode={writingMode}
+          draggingTextId={crossAreaDrag?.obj.id}
           onAddText={addTextObject}
           onUpdateText={updateTextObject}
           onEditRequest={openTextEditor}
+          onBeginCrossAreaDrag={handleBeginCrossAreaDrag}
         />
       </div>
 
-      {/* Selection overlay canvas */}
+      {/* Selection overlay canvas — raised above memo sidebar (z-index 200) when lasso active */}
       <canvas
         ref={overlayCanvasRef}
         style={{
@@ -619,21 +699,21 @@ export default function App() {
           top: 0, left: 0,
           width: '100vw',
           height: '100dvh',
-          zIndex: 50,
+          zIndex: tool.type === 'lasso' ? 201 : 50,
           pointerEvents: 'none',
         }}
       />
 
-      {/* Event overlay div — pointer-events:none when text tool active so clicks reach TextLayers */}
+      {/* Event overlay div — covers memo area when lasso active; pointer-events:none for text tool */}
       <div
         ref={overlayRef}
         style={{
           position: 'fixed',
           top: 0,
-          left: sidebarW,
+          left: tool.type === 'lasso' ? 0 : sidebarW,
           right: 0,
           bottom: 0,
-          zIndex: 100,
+          zIndex: tool.type === 'lasso' ? 202 : 100,
           cursor,
           touchAction: 'none',
           pointerEvents: isTextActive ? 'none' : 'auto',
@@ -695,6 +775,32 @@ export default function App() {
         onDeletePage={handleDeletePage}
         getThumbnail={pageStore.getThumbnail}
       />
+
+      {/* Cross-area drag ghost */}
+      {crossAreaDrag && (
+        <div
+          style={{
+            position: 'fixed',
+            left: crossAreaDrag.clientX + 4,
+            top: crossAreaDrag.clientY + 4,
+            zIndex: 3000,
+            pointerEvents: 'none',
+            writingMode: crossAreaDrag.obj.writingMode as 'horizontal-tb' | 'vertical-rl',
+            fontSize: crossAreaDrag.obj.fontSize,
+            color: crossAreaDrag.obj.color,
+            fontFamily: '"Hiragino Mincho ProN", "游明朝", YuMincho, serif',
+            whiteSpace: 'pre',
+            opacity: 0.75,
+            background: 'rgba(255,254,248,0.6)',
+            padding: '2px 4px',
+            borderRadius: '3px',
+            border: '1.5px dashed rgba(59,130,246,0.7)',
+            lineHeight: 1.5,
+          }}
+        >
+          {crossAreaDrag.obj.text}
+        </div>
+      )}
 
       {/* Text editor portal */}
       {textEditorState && (() => {

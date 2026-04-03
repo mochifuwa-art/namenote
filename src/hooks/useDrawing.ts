@@ -76,6 +76,7 @@ export function useDrawing({
       const target = getDrawTarget(e.clientX, e.clientY, leftRect, rightRect)
       if (!target) return
 
+      if (target.kind !== 'page') return
       const canvas = target.side === 'left' ? leftCanvasRef.current : rightCanvasRef.current
       const rect = target.side === 'left' ? leftRect : rightRect
 

@@ -65,6 +65,7 @@ interface UseSelectionOptions {
   overlayDivRef: React.RefObject<HTMLDivElement | null>
   leftCanvasRef: React.RefObject<HTMLCanvasElement | null>
   rightCanvasRef: React.RefObject<HTMLCanvasElement | null>
+  memoCanvasRef: React.RefObject<HTMLCanvasElement | null>
   enabled: boolean
   onBeforeEdit?: (target: DrawTarget) => void
   onSelectionChange: (hasSelection: boolean) => void
@@ -79,6 +80,7 @@ export function useSelection({
   overlayDivRef,
   leftCanvasRef,
   rightCanvasRef,
+  memoCanvasRef,
   enabled,
   onBeforeEdit,
   onSelectionChange,
@@ -111,6 +113,11 @@ export function useSelection({
   const getDrawTarget = useCallback((clientX: number, clientY: number): { target: DrawTarget; rect: DOMRect; canvas: HTMLCanvasElement } | null => {
     const leftRect = leftCanvasRef.current?.getBoundingClientRect() ?? null
     const rightRect = rightCanvasRef.current?.getBoundingClientRect() ?? null
+    const memoRect = memoCanvasRef.current?.getBoundingClientRect() ?? null
+    // Check memo first (it's on the left, can overlap with notebook in edge cases)
+    if (memoRect && memoRect.width > 0 && clientX >= memoRect.left && clientX <= memoRect.right && clientY >= memoRect.top && clientY <= memoRect.bottom) {
+      return { target: { kind: 'memo' }, rect: memoRect, canvas: memoCanvasRef.current! }
+    }
     if (leftRect && leftRect.width > 0 && clientX >= leftRect.left && clientX <= leftRect.right && clientY >= leftRect.top && clientY <= leftRect.bottom) {
       return { target: { kind: 'page', side: 'left' }, rect: leftRect, canvas: leftCanvasRef.current! }
     }
@@ -118,11 +125,12 @@ export function useSelection({
       return { target: { kind: 'page', side: 'right' }, rect: rightRect, canvas: rightCanvasRef.current! }
     }
     return null
-  }, [leftCanvasRef, rightCanvasRef])
+  }, [leftCanvasRef, rightCanvasRef, memoCanvasRef])
 
   const getTargetCanvas = useCallback((target: DrawTarget): HTMLCanvasElement | null => {
+    if (target.kind === 'memo') return memoCanvasRef.current
     return target.side === 'left' ? leftCanvasRef.current : rightCanvasRef.current
-  }, [leftCanvasRef, rightCanvasRef])
+  }, [leftCanvasRef, rightCanvasRef, memoCanvasRef])
 
   const getPasteHandles = useCallback((): {
     cx: number; cy: number; pw: number; ph: number
@@ -495,9 +503,11 @@ export function useSelection({
     const { target, rect, canvas } = result
 
     if (phaseRef.current === 'selected') {
-      if (selectionTargetRef.current &&
-          target.kind === 'page' && selectionTargetRef.current.kind === 'page' &&
-          target.side === selectionTargetRef.current.side) {
+      const sameTarget = selectionTargetRef.current && (
+        (target.kind === 'page' && selectionTargetRef.current.kind === 'page' && target.side === selectionTargetRef.current.side) ||
+        (target.kind === 'memo' && selectionTargetRef.current.kind === 'memo')
+      )
+      if (sameTarget) {
         const pts = lassoPointsRef.current
         const bb = getBoundingBox(pts)
         const coords = toCanvasCoords(e.clientX, e.clientY, rect, canvas)
