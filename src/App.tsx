@@ -64,6 +64,7 @@ export default function App() {
   const activePointersRef = useRef<Map<number, { x: number; y: number }>>(new Map())
   const pinchInitDistRef = useRef(0)
   const pinchInitZoomRef = useRef(1)
+  const notebookZoomRef = useRef(1)
 
   // ── Toast ────────────────────────────────────────────────────
   const [toastMsg, setToastMsg] = useState<string | null>(null)
@@ -207,8 +208,11 @@ export default function App() {
       history.clearPageHistory()
       setCurrentSpread(next)
       setMobileSide(side)
+      // Re-sync scale after navigation: Android browser chrome can change viewport height
+      // mid-navigation, so recompute after the browser has settled.
+      requestAnimationFrame(() => computeNotebookScale(sidebarOpen))
     },
-    [saveNow, history],
+    [saveNow, history, computeNotebookScale, sidebarOpen],
   )
 
   useEffect(() => {
@@ -350,7 +354,13 @@ export default function App() {
       computeNotebookScale(sidebarOpen)
     }
     window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
+    // visualViewport fires after Android browser chrome (address bar) finishes adjusting,
+    // giving more stable dimensions than window.resize alone
+    window.visualViewport?.addEventListener('resize', handleResize)
+    return () => {
+      window.removeEventListener('resize', handleResize)
+      window.visualViewport?.removeEventListener('resize', handleResize)
+    }
   }, [sidebarOpen, computeNotebookScale]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -434,19 +444,51 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [saveNow, history, markUnsaved])
 
+  // ── Global pinch-to-zoom (capture phase — fires before any element handler) ──
+  // Track ALL pointers across the full screen so pinch works wherever the fingers land.
+  useEffect(() => {
+    notebookZoomRef.current = notebookZoom
+  }, [notebookZoom])
+
+  useEffect(() => {
+    const onDown = (e: PointerEvent) => {
+      activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+      if (activePointersRef.current.size === 2) {
+        const pts = Array.from(activePointersRef.current.values())
+        const dx = pts[1].x - pts[0].x, dy = pts[1].y - pts[0].y
+        pinchInitDistRef.current = Math.sqrt(dx * dx + dy * dy) || 1
+        pinchInitZoomRef.current = notebookZoomRef.current
+      }
+    }
+    const onMove = (e: PointerEvent) => {
+      activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+      if (activePointersRef.current.size === 2) {
+        const pts = Array.from(activePointersRef.current.values())
+        const dx = pts[1].x - pts[0].x, dy = pts[1].y - pts[0].y
+        const newDist = Math.sqrt(dx * dx + dy * dy) || 1
+        const newZoom = Math.max(0.3, Math.min(3,
+          pinchInitZoomRef.current * newDist / pinchInitDistRef.current))
+        setNotebookZoom(newZoom)
+      }
+    }
+    const onUp = (e: PointerEvent) => activePointersRef.current.delete(e.pointerId)
+    window.addEventListener('pointerdown', onDown, { capture: true })
+    window.addEventListener('pointermove', onMove, { capture: true })
+    window.addEventListener('pointerup', onUp, { capture: true })
+    window.addEventListener('pointercancel', onUp, { capture: true })
+    return () => {
+      window.removeEventListener('pointerdown', onDown, { capture: true })
+      window.removeEventListener('pointermove', onMove, { capture: true })
+      window.removeEventListener('pointerup', onUp, { capture: true })
+      window.removeEventListener('pointercancel', onUp, { capture: true })
+    }
+  }, []) // refs only — no re-registration needed
+
   // ── Pointer event dispatcher (overlay div) ───────────────────
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
-      activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
-
-      if (activePointersRef.current.size === 2) {
-        const pts = Array.from(activePointersRef.current.values())
-        const dx = pts[1].x - pts[0].x
-        const dy = pts[1].y - pts[0].y
-        pinchInitDistRef.current = Math.sqrt(dx * dx + dy * dy) || 1
-        pinchInitZoomRef.current = notebookZoom
-        return
-      }
+      // Block drawing/selection when two pointers are active (pinch gesture)
+      if (activePointersRef.current.size >= 2) return
 
       if (tool.type === 'lasso' || selection.isPasting()) {
         selection.handlePointerDown(e)
@@ -454,25 +496,13 @@ export default function App() {
         drawing.handlePointerDown(e)
       }
     },
-    [tool.type, selection, drawing, notebookZoom],
+    [tool.type, selection, drawing],
   )
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
-      activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
-
-      if (activePointersRef.current.size === 2) {
-        const pts = Array.from(activePointersRef.current.values())
-        const dx = pts[1].x - pts[0].x
-        const dy = pts[1].y - pts[0].y
-        const newDist = Math.sqrt(dx * dx + dy * dy) || 1
-        const newZoom = Math.max(
-          0.3,
-          Math.min(3, (pinchInitZoomRef.current * newDist) / pinchInitDistRef.current),
-        )
-        setNotebookZoom(newZoom)
-        return
-      }
+      // Block drawing/selection during pinch
+      if (activePointersRef.current.size >= 2) return
 
       if (tool.type === 'lasso' || selection.isPasting()) {
         selection.handlePointerMove(e)
@@ -485,8 +515,6 @@ export default function App() {
 
   const handlePointerUp = useCallback(
     (e: React.PointerEvent) => {
-      activePointersRef.current.delete(e.pointerId)
-
       if (tool.type === 'lasso' || selection.isPasting()) {
         selection.handlePointerUp(e)
       } else {

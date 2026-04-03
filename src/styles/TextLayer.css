@@ -10,6 +10,7 @@
 .text-layer--active {
   pointer-events: all;
   cursor: text;
+  touch-action: none; /* prevent Android from stealing pointer as scroll during text drag */
 }
 
 /* ── Static text item (non-editing state) ─────────────────────── */
@@ -22,6 +23,7 @@
 .text-item--active {
   pointer-events: all;
   cursor: move;
+  touch-action: none; /* prevent pointercancel during drag on Android */
 }
 
 .text-item--active:hover {

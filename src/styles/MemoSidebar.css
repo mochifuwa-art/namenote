@@ -44,12 +44,22 @@
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  /* Hide scrollbar visually but keep functionality */
-  scrollbar-width: none;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.22) transparent;
 }
 
 .memo-sidebar__scroll::-webkit-scrollbar {
-  display: none;
+  width: 6px;
+}
+
+.memo-sidebar__scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.memo-sidebar__scroll::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.22);
+  border-radius: 3px;
+  min-height: 40px; /* large enough to touch on tablet */
 }
 
 .memo-sidebar__canvas-wrap {
