@@ -29,6 +29,7 @@ export default function App() {
   const [showOverview, setShowOverview] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [notebookZoom, setNotebookZoom] = useState(1)
+  const [notebookPan, setNotebookPan] = useState({ x: 0, y: 0 })
   const [totalSpreads, setTotalSpreads] = useState(() =>
     parseInt(localStorage.getItem('namenote_spread_count') ?? '1', 10) || 1,
   )
@@ -64,7 +65,11 @@ export default function App() {
   const activePointersRef = useRef<Map<number, { x: number; y: number }>>(new Map())
   const pinchInitDistRef = useRef(0)
   const pinchInitZoomRef = useRef(1)
+  const pinchInitMidRef = useRef({ x: 0, y: 0 })
+  const pinchInitPanRef = useRef({ x: 0, y: 0 })
   const notebookZoomRef = useRef(1)
+  const notebookPanRef = useRef({ x: 0, y: 0 })
+  const sidebarWRef = useRef(0)
 
   // ── Toast ────────────────────────────────────────────────────
   const [toastMsg, setToastMsg] = useState<string | null>(null)
@@ -208,6 +213,8 @@ export default function App() {
       history.clearPageHistory()
       setCurrentSpread(next)
       setMobileSide(side)
+      setNotebookZoom(1)
+      setNotebookPan({ x: 0, y: 0 })
       // Re-sync scale after navigation: Android browser chrome can change viewport height
       // mid-navigation, so recompute after the browser has settled.
       requestAnimationFrame(() => computeNotebookScale(sidebarOpen))
@@ -446,9 +453,9 @@ export default function App() {
 
   // ── Global pinch-to-zoom (capture phase — fires before any element handler) ──
   // Track ALL pointers across the full screen so pinch works wherever the fingers land.
-  useEffect(() => {
-    notebookZoomRef.current = notebookZoom
-  }, [notebookZoom])
+  useEffect(() => { notebookZoomRef.current = notebookZoom }, [notebookZoom])
+  useEffect(() => { notebookPanRef.current = notebookPan }, [notebookPan])
+  useEffect(() => { sidebarWRef.current = sidebarOpen ? SIDEBAR_W : 0 }, [sidebarOpen])
 
   useEffect(() => {
     const onDown = (e: PointerEvent) => {
@@ -458,6 +465,8 @@ export default function App() {
         const dx = pts[1].x - pts[0].x, dy = pts[1].y - pts[0].y
         pinchInitDistRef.current = Math.sqrt(dx * dx + dy * dy) || 1
         pinchInitZoomRef.current = notebookZoomRef.current
+        pinchInitMidRef.current = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 }
+        pinchInitPanRef.current = { ...notebookPanRef.current }
       }
     }
     const onMove = (e: PointerEvent) => {
@@ -465,10 +474,26 @@ export default function App() {
       if (activePointersRef.current.size === 2) {
         const pts = Array.from(activePointersRef.current.values())
         const dx = pts[1].x - pts[0].x, dy = pts[1].y - pts[0].y
-        const newDist = Math.sqrt(dx * dx + dy * dy) || 1
+        const currDist = Math.sqrt(dx * dx + dy * dy) || 1
         const newZoom = Math.max(0.3, Math.min(3,
-          pinchInitZoomRef.current * newDist / pinchInitDistRef.current))
+          pinchInitZoomRef.current * currDist / pinchInitDistRef.current))
+
+        // Pan so the pinch midpoint stays over the same content point.
+        // With transformOrigin:'center center' and transform:translate(px,py) scale(z):
+        //   element center in screen = (sw + (vw-sw)/2, vh/2)
+        //   ox = (vw - sw) / 2  (element half-width), oy = vh / 2
+        //   newPan = A*(1 - ratio) + ratio*initPan   where A = mid - sw - ox
+        const sw = sidebarWRef.current
+        const ox = (window.innerWidth - sw) / 2
+        const oy = window.innerHeight / 2
+        const { x: imx, y: imy } = pinchInitMidRef.current
+        const initPan = pinchInitPanRef.current
+        const ratio = newZoom / pinchInitZoomRef.current
         setNotebookZoom(newZoom)
+        setNotebookPan({
+          x: (imx - sw - ox) * (1 - ratio) + ratio * initPan.x,
+          y: (imy - oy) * (1 - ratio) + ratio * initPan.y,
+        })
       }
     }
     const onUp = (e: PointerEvent) => activePointersRef.current.delete(e.pointerId)
@@ -696,7 +721,9 @@ export default function App() {
           pointerEvents: 'none',
           zIndex: 1,
           transformOrigin: 'center center',
-          transform: notebookZoom !== 1 ? `scale(${notebookZoom})` : undefined,
+          transform: (notebookZoom !== 1 || notebookPan.x !== 0 || notebookPan.y !== 0)
+            ? `translate(${notebookPan.x.toFixed(2)}px, ${notebookPan.y.toFixed(2)}px) scale(${notebookZoom})`
+            : undefined,
         }}
       >
         <NotebookSpread
