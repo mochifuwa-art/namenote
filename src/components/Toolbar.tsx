@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import type { DrawingTool, SaveStatus, TextWritingMode } from '../types'
+import type { DrawingTool, SaveStatus, TextWritingMode, InputMode } from '../types'
 import { type ToolType } from '../types'
 import '../styles/Toolbar.css'
 
@@ -51,6 +51,9 @@ interface ToolbarProps {
   // Stabilization
   stabilizationEnabled: boolean
   onToggleStabilization: () => void
+  // Input mode
+  inputMode: InputMode
+  onInputModeChange: (mode: InputMode) => void
 }
 
 export default function Toolbar({
@@ -91,6 +94,8 @@ export default function Toolbar({
   onTextFontSizeChange,
   stabilizationEnabled,
   onToggleStabilization,
+  inputMode,
+  onInputModeChange,
 }: ToolbarProps) {
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [showColorPicker, setShowColorPicker] = useState(false)
@@ -123,6 +128,23 @@ export default function Toolbar({
         <button className="tool-btn tool-btn--labeled" onClick={onRedo} disabled={!canRedo}>
           ↪<span className="tool-label">やり直</span>
         </button>
+      </div>
+
+      <div className="toolbar-sep" />
+
+      {/* Input mode switcher */}
+      <div className="toolbar-group">
+        {(['auto', 'draw', 'pan'] as InputMode[]).map(m => (
+          <button
+            key={m}
+            className={`tool-btn tool-btn--labeled ${inputMode === m ? 'active' : ''}`}
+            onClick={() => onInputModeChange(m)}
+            title={m === 'auto' ? '自動（ペン=描画、指=パン）' : m === 'draw' ? '描画モード' : 'パンモード'}
+          >
+            {m === 'auto' ? '⟳' : m === 'draw' ? '✏' : '✥'}
+            <span className="tool-label">{m === 'auto' ? 'AUTO' : m === 'draw' ? 'DRAW' : 'PAN'}</span>
+          </button>
+        ))}
       </div>
 
       <div className="toolbar-sep" />

@@ -36,6 +36,7 @@ interface UseDrawingOptions {
   overlayRef: React.RefObject<HTMLDivElement | null>
   onBeforeStroke?: (target: DrawTarget) => void
   onStrokeEnd: (target: DrawTarget) => void
+  onCancelStroke?: () => void
   enabled: boolean  // false when lasso tool is active
   stabilizationEnabled: boolean
 }
@@ -47,6 +48,7 @@ export function useDrawing({
   overlayRef,
   onBeforeStroke,
   onStrokeEnd,
+  onCancelStroke,
   enabled,
   stabilizationEnabled,
 }: UseDrawingOptions) {
@@ -205,5 +207,17 @@ export function useDrawing({
     [onStrokeEnd, overlayRef, stabilizationEnabled, applyToolToCtx]
   )
 
-  return { handlePointerDown, handlePointerMove, handlePointerUp, PAGE_WIDTH, PAGE_HEIGHT }
+  // Cancel an in-progress stroke (e.g. when a second finger touches down mid-draw)
+  const cancelStroke = useCallback(() => {
+    if (!isDrawingRef.current) return
+    isDrawingRef.current = false
+    stabilizerRef.current = null
+    activeCtxRef.current = null
+    activeTargetRef.current = null
+    activeRectRef.current = null
+    activeCanvasRef.current = null
+    onCancelStroke?.()
+  }, [onCancelStroke])
+
+  return { handlePointerDown, handlePointerMove, handlePointerUp, cancelStroke, PAGE_WIDTH, PAGE_HEIGHT }
 }
