@@ -49,8 +49,8 @@ interface ToolbarProps {
   textFontSize: number
   onTextFontSizeChange: (size: number) => void
   // Stabilization
-  stabilizationEnabled: boolean
-  onToggleStabilization: () => void
+  stabilizationStrength: number         // 0 = off, 1–100 = string length strength
+  onStabilizationStrengthChange: (v: number) => void
   // Input mode
   inputMode: InputMode
   onInputModeChange: (mode: InputMode) => void
@@ -92,8 +92,8 @@ export default function Toolbar({
   onWritingModeChange,
   textFontSize,
   onTextFontSizeChange,
-  stabilizationEnabled,
-  onToggleStabilization,
+  stabilizationStrength,
+  onStabilizationStrengthChange,
   inputMode,
   onInputModeChange,
 }: ToolbarProps) {
@@ -268,14 +268,20 @@ export default function Toolbar({
             <span className="size-label">{tool.size}px</span>
           </div>
           <div className="toolbar-sep" />
-          <div className="toolbar-group">
-            <button
-              className={`tool-btn tool-btn--labeled ${stabilizationEnabled ? 'active' : ''}`}
-              onClick={onToggleStabilization}
-              title="手ブレ補正のオン/オフ"
-            >
-              ✦<span className="tool-label">補正</span>
-            </button>
+          <div className="toolbar-group toolbar-group--stab">
+            <label className="stab-label" title="手ブレ補正強度（0=オフ）">
+              <span className="stab-label__text">補正</span>
+              <input
+                type="range"
+                className="stab-slider"
+                min={0}
+                max={100}
+                step={1}
+                value={stabilizationStrength}
+                onChange={e => onStabilizationStrengthChange(Number(e.target.value))}
+              />
+              <span className="stab-label__val">{stabilizationStrength}</span>
+            </label>
           </div>
         </>
       ) : null}
