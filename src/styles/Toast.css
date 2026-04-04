@@ -1,28 +1,31 @@
 .toast {
   position: fixed;
-  top: 20px;
+  top: 18px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(24, 24, 28, 0.93);
-  color: #f0f0f0;
-  padding: 10px 22px;
+  background: rgba(20, 14, 8, 0.95);
+  color: rgba(255, 255, 255, 0.88);
+  padding: 9px 20px 9px 16px;
   border-radius: 10px;
   font-size: 13px;
-  z-index: 300;
+  z-index: 9999;
   white-space: nowrap;
   max-width: 90vw;
   overflow: hidden;
   text-overflow: ellipsis;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45), 0 1px 0 rgba(255,255,255,0.06) inset;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-left: 3px solid rgba(96, 165, 250, 0.7);
   pointer-events: none;
+  letter-spacing: 0.02em;
   animation:
-    toast-in  0.18s cubic-bezier(0.22, 1, 0.36, 1) forwards,
-    toast-out 0.25s ease 2.75s forwards;
+    toast-in  0.2s cubic-bezier(0.22, 1, 0.36, 1) forwards,
+    toast-out 0.22s ease 2.78s forwards;
 }
 
 @keyframes toast-in {
-  from { opacity: 0; transform: translateX(-50%) translateY(-10px); }
-  to   { opacity: 1; transform: translateX(-50%) translateY(0);     }
+  from { opacity: 0; transform: translateX(-50%) translateY(-8px) scale(0.97); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0)     scale(1);   }
 }
 
 @keyframes toast-out {

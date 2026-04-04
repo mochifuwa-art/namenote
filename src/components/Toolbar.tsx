@@ -128,19 +128,19 @@ export default function Toolbar({
           className={`tool-btn tool-btn--labeled ${tool.type === 'pen' ? 'active' : ''}`}
           onClick={() => setToolType('pen')}
         >
-          ✏️<span className="tool-label">ペン</span>
+          ✏<span className="tool-label">ペン</span>
         </button>
         <button
           className={`tool-btn tool-btn--labeled ${tool.type === 'eraser' ? 'active' : ''}`}
           onClick={() => setToolType('eraser')}
         >
-          🧹<span className="tool-label">消しゴム</span>
+          ⌫<span className="tool-label">消しゴム</span>
         </button>
         <button
           className={`tool-btn tool-btn--labeled ${tool.type === 'lasso' ? 'active' : ''}`}
           onClick={() => setToolType('lasso')}
         >
-          🔲<span className="tool-label">選択</span>
+          ⬚<span className="tool-label">選択</span>
         </button>
         <button
           className={`tool-btn tool-btn--labeled ${tool.type === 'text' ? 'active' : ''}`}
@@ -269,11 +269,11 @@ export default function Toolbar({
       {tool.type === 'lasso' && !isPasting && (
         <>
           <div className="toolbar-group">
-            <button className="tool-btn" onClick={onCut} disabled={!selectionActive} title="切り取り">✂️</button>
-            <button className="tool-btn" onClick={onCopy} disabled={!selectionActive} title="コピー">📋</button>
-            <button className="tool-btn" onClick={onMove} disabled={!selectionActive} title="移動" style={{ fontSize: 11 }}>移動</button>
-            <button className="tool-btn" onClick={onPaste} disabled={!hasClipboard} title="貼り付け">📌</button>
-            <button className="tool-btn" onClick={onDeleteSelection} disabled={!selectionActive} title="削除">🗑️</button>
+            <button className="tool-btn" onClick={onCut} disabled={!selectionActive} title="切り取り">✂</button>
+            <button className="tool-btn" onClick={onCopy} disabled={!selectionActive} title="コピー" style={{ fontSize: 12 }}>コピー</button>
+            <button className="tool-btn" onClick={onMove} disabled={!selectionActive} title="移動" style={{ fontSize: 12 }}>移動</button>
+            <button className="tool-btn" onClick={onPaste} disabled={!hasClipboard} title="貼り付け" style={{ fontSize: 12 }}>貼付</button>
+            <button className="tool-btn" onClick={onDeleteSelection} disabled={!selectionActive} title="削除" style={{ color: 'rgba(248,113,113,0.85)' }}>✕</button>
           </div>
           <div className="toolbar-sep" />
         </>
@@ -285,8 +285,8 @@ export default function Toolbar({
         <span className="spread-label">{navLabel}</span>
         <button className="nav-btn" onClick={onPrevSpread} disabled={prevDisabled} title="前のページ">▶</button>
         <button className="nav-btn add-btn" onClick={onAddSpread} title="スプレッド追加">＋</button>
-        <button className="tool-btn tool-btn--labeled" onClick={onOpenOverview}>
-          ☰<span className="tool-label">一覧</span>
+        <button className="tool-btn tool-btn--labeled" onClick={onOpenOverview} title="ページ一覧">
+          ⊞<span className="tool-label">一覧</span>
         </button>
       </div>
 
@@ -306,7 +306,7 @@ export default function Toolbar({
           onClick={() => { setShowExportMenu(v => !v); setShowColorPicker(false) }}
           title="ファイル"
         >
-          ファイル ▲
+          ⋯ ファイル
         </button>
         {showExportMenu && createPortal(
           <>

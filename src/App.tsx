@@ -459,6 +459,7 @@ export default function App() {
 
   useEffect(() => {
     const onDown = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch') return  // ignore synthetic mouse events from Android Chrome
       activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
       if (activePointersRef.current.size === 2) {
         const pts = Array.from(activePointersRef.current.values())
@@ -470,6 +471,8 @@ export default function App() {
       }
     }
     const onMove = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch') return
+      if (!activePointersRef.current.has(e.pointerId)) return  // not a tracked touch
       activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
       if (activePointersRef.current.size === 2) {
         const pts = Array.from(activePointersRef.current.values())
