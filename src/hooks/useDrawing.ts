@@ -1,4 +1,5 @@
 import { useRef, useCallback } from 'react'
+import { StabilizedPointer, oneEuroFilter } from '@stroke-stabilizer/core'
 import type { DrawingTool, DrawTarget } from '../types'
 
 const PAGE_WIDTH = 560
@@ -36,6 +37,7 @@ interface UseDrawingOptions {
   onBeforeStroke?: (target: DrawTarget) => void
   onStrokeEnd: (target: DrawTarget) => void
   enabled: boolean  // false when lasso tool is active
+  stabilizationEnabled: boolean
 }
 
 export function useDrawing({
@@ -46,6 +48,7 @@ export function useDrawing({
   onBeforeStroke,
   onStrokeEnd,
   enabled,
+  stabilizationEnabled,
 }: UseDrawingOptions) {
   const isDrawingRef = useRef(false)
   const lastPointRef = useRef({ x: 0, y: 0 })
@@ -53,6 +56,7 @@ export function useDrawing({
   const activeCtxRef = useRef<CanvasRenderingContext2D | null>(null)
   const activeRectRef = useRef<DOMRect | null>(null)
   const activeCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const stabilizerRef = useRef<StabilizedPointer | null>(null)
 
   const applyToolToCtx = useCallback(
     (ctx: CanvasRenderingContext2D) => {
@@ -97,6 +101,22 @@ export function useDrawing({
       ctx.globalCompositeOperation = tool.type === 'eraser' ? 'destination-out' : 'source-over'
       ctx.fill()
 
+      // Initialize stabilizer for this stroke
+      if (stabilizationEnabled) {
+        stabilizerRef.current = new StabilizedPointer().addFilter(
+          oneEuroFilter({ minCutoff: 1.0, beta: 0.007 })
+        )
+        // Feed the initial point to warm up the filter
+        stabilizerRef.current.process({
+          x: coords.x,
+          y: coords.y,
+          pressure: e.pressure,
+          timestamp: e.timeStamp,
+        })
+      } else {
+        stabilizerRef.current = null
+      }
+
       isDrawingRef.current = true
       lastPointRef.current = coords
       activeTargetRef.current = target
@@ -106,7 +126,7 @@ export function useDrawing({
 
       overlayRef.current?.setPointerCapture(e.pointerId)
     },
-    [enabled, tool, leftCanvasRef, rightCanvasRef, overlayRef, onBeforeStroke, applyToolToCtx]
+    [enabled, tool, leftCanvasRef, rightCanvasRef, overlayRef, onBeforeStroke, applyToolToCtx, stabilizationEnabled]
   )
 
   const handlePointerMove = useCallback(
@@ -118,22 +138,60 @@ export function useDrawing({
       const canvas = activeCanvasRef.current
       const rect = activeRectRef.current!
 
-      const coords = toCanvasCoords(e.clientX, e.clientY, rect, canvas)
+      // Use coalesced events for smoother input capture
+      const events = e.nativeEvent.getCoalescedEvents?.() ?? [e.nativeEvent]
 
       applyToolToCtx(ctx)
-      ctx.beginPath()
-      ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y)
-      ctx.lineTo(coords.x, coords.y)
-      ctx.stroke()
 
-      lastPointRef.current = coords
+      for (const ce of events) {
+        const coords = toCanvasCoords(ce.clientX, ce.clientY, rect, canvas)
+
+        if (stabilizationEnabled && stabilizerRef.current) {
+          const result = stabilizerRef.current.process({
+            x: coords.x,
+            y: coords.y,
+            pressure: ce.pressure,
+            timestamp: ce.timeStamp,
+          })
+          if (result) {
+            ctx.beginPath()
+            ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y)
+            ctx.lineTo(result.x, result.y)
+            ctx.stroke()
+            lastPointRef.current = { x: result.x, y: result.y }
+          }
+        } else {
+          ctx.beginPath()
+          ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y)
+          ctx.lineTo(coords.x, coords.y)
+          ctx.stroke()
+          lastPointRef.current = coords
+        }
+      }
     },
-    [applyToolToCtx]
+    [applyToolToCtx, stabilizationEnabled]
   )
 
   const handlePointerUp = useCallback(
     (e: React.PointerEvent) => {
       if (!isDrawingRef.current) return
+
+      // Flush any remaining stabilized points for endpoint correction
+      if (stabilizationEnabled && stabilizerRef.current && activeCtxRef.current) {
+        const finalPoints = stabilizerRef.current.finish()
+        if (finalPoints.length > 0) {
+          const ctx = activeCtxRef.current
+          applyToolToCtx(ctx)
+          // Draw a line to the final corrected endpoint
+          const last = finalPoints[finalPoints.length - 1]
+          ctx.beginPath()
+          ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y)
+          ctx.lineTo(last.x, last.y)
+          ctx.stroke()
+        }
+        stabilizerRef.current = null
+      }
+
       isDrawingRef.current = false
       if (activeTargetRef.current) {
         onStrokeEnd(activeTargetRef.current)
@@ -144,7 +202,7 @@ export function useDrawing({
       activeCanvasRef.current = null
       overlayRef.current?.releasePointerCapture(e.pointerId)
     },
-    [onStrokeEnd, overlayRef]
+    [onStrokeEnd, overlayRef, stabilizationEnabled, applyToolToCtx]
   )
 
   return { handlePointerDown, handlePointerMove, handlePointerUp, PAGE_WIDTH, PAGE_HEIGHT }

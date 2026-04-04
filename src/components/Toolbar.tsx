@@ -48,6 +48,9 @@ interface ToolbarProps {
   onWritingModeChange: (mode: TextWritingMode) => void
   textFontSize: number
   onTextFontSizeChange: (size: number) => void
+  // Stabilization
+  stabilizationEnabled: boolean
+  onToggleStabilization: () => void
 }
 
 export default function Toolbar({
@@ -86,6 +89,8 @@ export default function Toolbar({
   onWritingModeChange,
   textFontSize,
   onTextFontSizeChange,
+  stabilizationEnabled,
+  onToggleStabilization,
 }: ToolbarProps) {
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [showColorPicker, setShowColorPicker] = useState(false)
@@ -227,18 +232,30 @@ export default function Toolbar({
           </div>
         </>
       ) : (tool.type === 'pen' || tool.type === 'eraser') ? (
-        <div className="toolbar-group">
-          <input
-            type="range"
-            className="size-slider"
-            min={1}
-            max={30}
-            value={tool.size}
-            onChange={e => setSize(parseInt(e.target.value))}
-            title={`${tool.size}px`}
-          />
-          <span className="size-label">{tool.size}px</span>
-        </div>
+        <>
+          <div className="toolbar-group">
+            <input
+              type="range"
+              className="size-slider"
+              min={1}
+              max={30}
+              value={tool.size}
+              onChange={e => setSize(parseInt(e.target.value))}
+              title={`${tool.size}px`}
+            />
+            <span className="size-label">{tool.size}px</span>
+          </div>
+          <div className="toolbar-sep" />
+          <div className="toolbar-group">
+            <button
+              className={`tool-btn tool-btn--labeled ${stabilizationEnabled ? 'active' : ''}`}
+              onClick={onToggleStabilization}
+              title="手ブレ補正のオン/オフ"
+            >
+              ✦<span className="tool-label">補正</span>
+            </button>
+          </div>
+        </>
       ) : null}
 
       <div className="toolbar-sep" />

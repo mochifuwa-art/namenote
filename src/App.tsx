@@ -34,6 +34,7 @@ export default function App() {
     parseInt(localStorage.getItem('namenote_spread_count') ?? '1', 10) || 1,
   )
   const [mobileSide, setMobileSide] = useState<'R' | 'L'>('R')
+  const [stabilizationEnabled, setStabilizationEnabled] = useState(true)
 
   // ── Text tool state ───────────────────────────────────────────
   const [textObjects, setTextObjects] = useState<TextObject[]>(() => {
@@ -165,6 +166,7 @@ export default function App() {
     onBeforeStroke: history.push,
     onStrokeEnd: markUnsaved,
     enabled: tool.type !== 'lasso' && tool.type !== 'text',
+    stabilizationEnabled,
   })
 
   // ── Selection ────────────────────────────────────────────────
@@ -819,6 +821,8 @@ export default function App() {
         onWritingModeChange={setWritingMode}
         textFontSize={textFontSize}
         onTextFontSizeChange={setTextFontSize}
+        stabilizationEnabled={stabilizationEnabled}
+        onToggleStabilization={() => setStabilizationEnabled(v => !v)}
       />
 
       {/* Page overview panel */}
