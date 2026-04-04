@@ -1,5 +1,5 @@
 import { forwardRef, useRef, useCallback, useEffect } from 'react'
-import type { DrawingTool, TextObject, TextWritingMode } from '../types'
+import type { DrawingTool, TextObject, TextWritingMode, InputMode } from '../types'
 import TextLayer from './TextLayer'
 import '../styles/MemoSidebar.css'
 
@@ -10,6 +10,7 @@ interface MemoSidebarProps {
   open: boolean
   onToggle: () => void
   tool: DrawingTool
+  inputMode: InputMode
   // Text layer props
   textObjects: TextObject[]
   isTextActive: boolean
@@ -29,6 +30,7 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
       open,
       onToggle,
       tool,
+      inputMode,
       textObjects,
       isTextActive,
       textColor,
@@ -81,6 +83,8 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
       (e: React.PointerEvent<HTMLCanvasElement>) => {
         if (isTextActive) return          // text tool active → text layer handles events
         if (e.pointerType === 'touch' && !e.isPrimary) return
+        // AUTO/PAN mode: let touch events scroll the sidebar instead of drawing
+        if (e.pointerType === 'touch' && (inputMode === 'auto' || inputMode === 'pan')) return
         e.currentTarget.setPointerCapture(e.pointerId)
 
         const canvas = (canvasRef as React.RefObject<HTMLCanvasElement>).current
@@ -101,7 +105,7 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
         lastPtRef.current = pt
         activeCtxRef.current = ctx
       },
-      [canvasRef, applyTool, getCanvasCoords, tool, isTextActive],
+      [canvasRef, applyTool, getCanvasCoords, tool, isTextActive, inputMode],
     )
 
     const handlePointerMove = useCallback(
@@ -142,6 +146,7 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
               <canvas
                 ref={canvasRef}
                 className="memo-sidebar__canvas"
+                style={{ touchAction: inputMode === 'draw' ? 'none' : 'pan-y' }}
                 onPointerDown={handlePointerDown}
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import type { DrawingTool, SaveStatus, TextObject, TextWritingMode } from './types'
+import type { DrawingTool, SaveStatus, TextObject, TextWritingMode, InputMode } from './types'
 import { usePageStore } from './hooks/usePageStore'
 import { useDrawing } from './hooks/useDrawing'
 import { useSelection } from './hooks/useSelection'
@@ -19,6 +19,28 @@ import TextEditor from './components/TextEditor'
 const SAVE_DEBOUNCE_MS = 600
 const SIDEBAR_W = 260
 
+// Determine what action the current pointer event should trigger.
+// Priority: 2+ touch fingers → gesture (handled by global handler)
+//           tool overrides (lasso/text always draw)
+//           inputMode + pointerType for pen/eraser
+function resolvePointerAction(
+  pointerType: string,
+  touchPointerCount: number,
+  inputMode: import('./types').InputMode,
+  toolType: import('./types').ToolType,
+): 'draw' | 'pan' | 'gesture' {
+  if (touchPointerCount >= 2) return 'gesture'
+  // lasso and text tools always route to their own handlers
+  if (toolType === 'lasso' || toolType === 'text') return 'draw'
+  switch (inputMode) {
+    case 'pan': return 'pan'
+    case 'draw': return 'draw'
+    case 'auto':
+    default:
+      return pointerType === 'touch' ? 'pan' : 'draw'
+  }
+}
+
 export default function App() {
   const [currentSpread, setCurrentSpread] = useState(0)
   const [tool, setTool] = useState<DrawingTool>({ type: 'pen', color: '#1a1a1a', size: 3 })
@@ -34,6 +56,9 @@ export default function App() {
     parseInt(localStorage.getItem('namenote_spread_count') ?? '1', 10) || 1,
   )
   const [mobileSide, setMobileSide] = useState<'R' | 'L'>('R')
+  const [stabilizationEnabled, setStabilizationEnabled] = useState(true)
+  const [inputMode, setInputMode] = useState<InputMode>('auto')
+  const inputModeRef = useRef<InputMode>('auto')
 
   // ── Text tool state ───────────────────────────────────────────
   const [textObjects, setTextObjects] = useState<TextObject[]>(() => {
@@ -70,6 +95,14 @@ export default function App() {
   const notebookZoomRef = useRef(1)
   const notebookPanRef = useRef({ x: 0, y: 0 })
   const sidebarWRef = useRef(0)
+  const sidebarOpenRef = useRef(sidebarOpen)
+
+  // Single-pointer pan tracking
+  const isPanningRef = useRef(false)
+  const panLastPtRef = useRef({ x: 0, y: 0 })
+
+  // Stable ref to drawing.cancelStroke for use in global capture handler
+  const cancelStrokeRef = useRef<() => void>(() => {})
 
   // ── Toast ────────────────────────────────────────────────────
   const [toastMsg, setToastMsg] = useState<string | null>(null)
@@ -164,8 +197,12 @@ export default function App() {
     overlayRef,
     onBeforeStroke: history.push,
     onStrokeEnd: markUnsaved,
+    onCancelStroke: history.undo,
     enabled: tool.type !== 'lasso' && tool.type !== 'text',
+    stabilizationEnabled,
   })
+  // Keep cancelStrokeRef in sync so the global capture handler can call it
+  useEffect(() => { cancelStrokeRef.current = drawing.cancelStroke }, [drawing.cancelStroke])
 
   // ── Selection ────────────────────────────────────────────────
   const selection = useSelection({
@@ -456,12 +493,19 @@ export default function App() {
   useEffect(() => { notebookZoomRef.current = notebookZoom }, [notebookZoom])
   useEffect(() => { notebookPanRef.current = notebookPan }, [notebookPan])
   useEffect(() => { sidebarWRef.current = sidebarOpen ? SIDEBAR_W : 0 }, [sidebarOpen])
+  useEffect(() => { sidebarOpenRef.current = sidebarOpen }, [sidebarOpen])
+  useEffect(() => { inputModeRef.current = inputMode }, [inputMode])
 
   useEffect(() => {
     const onDown = (e: PointerEvent) => {
       if (e.pointerType !== 'touch') return  // ignore synthetic mouse events from Android Chrome
+      // Touches starting in the sidebar area are handled by the sidebar, not notebook pinch
+      if (sidebarOpenRef.current && e.clientX < sidebarWRef.current) return
       activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
       if (activePointersRef.current.size === 2) {
+        // Cancel any in-progress drawing or single-finger pan before entering gesture mode
+        cancelStrokeRef.current()
+        isPanningRef.current = false
         const pts = Array.from(activePointersRef.current.values())
         const dx = pts[1].x - pts[0].x, dy = pts[1].y - pts[0].y
         pinchInitDistRef.current = Math.sqrt(dx * dx + dy * dy) || 1
@@ -481,21 +525,28 @@ export default function App() {
         const newZoom = Math.max(0.3, Math.min(3,
           pinchInitZoomRef.current * currDist / pinchInitDistRef.current))
 
-        // Pan so the pinch midpoint stays over the same content point.
-        // With transformOrigin:'center center' and transform:translate(px,py) scale(z):
-        //   element center in screen = (sw + (vw-sw)/2, vh/2)
-        //   ox = (vw - sw) / 2  (element half-width), oy = vh / 2
-        //   newPan = A*(1 - ratio) + ratio*initPan   where A = mid - sw - ox
+        // Combined pan + zoom:
+        // The content that was under the initial midpoint (imx, imy) should now appear
+        // under the current midpoint (cmx, cmy). This formula handles both zoom-center
+        // correction and finger-movement pan simultaneously.
+        //
+        // Derivation (transformOrigin: center center, transform: translate(pan) scale(zoom)):
+        //   screen_x = A + content_x * zoom + pan.x   where A = sw + (vw-sw)/2
+        //   content under initMid: ex = (imx - A - initPan.x) / initZoom
+        //   newPan.x s.t. screen_x of ex = cmx:
+        //     newPan.x = (cmx - A) + ratio * (A - imx + initPan.x)
         const sw = sidebarWRef.current
-        const ox = (window.innerWidth - sw) / 2
-        const oy = window.innerHeight / 2
+        const A = sw + (window.innerWidth - sw) / 2   // notebook center X on screen
+        const B = window.innerHeight / 2              // notebook center Y on screen
+        const cmx = (pts[0].x + pts[1].x) / 2        // current midpoint
+        const cmy = (pts[0].y + pts[1].y) / 2
         const { x: imx, y: imy } = pinchInitMidRef.current
         const initPan = pinchInitPanRef.current
         const ratio = newZoom / pinchInitZoomRef.current
         setNotebookZoom(newZoom)
         setNotebookPan({
-          x: (imx - sw - ox) * (1 - ratio) + ratio * initPan.x,
-          y: (imy - oy) * (1 - ratio) + ratio * initPan.y,
+          x: (cmx - A) + ratio * (A - imx + initPan.x),
+          y: (cmy - B) + ratio * (B - imy + initPan.y),
         })
       }
     }
@@ -515,22 +566,43 @@ export default function App() {
   // ── Pointer event dispatcher (overlay div) ───────────────────
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
-      // Block drawing/selection when two pointers are active (pinch gesture)
-      if (activePointersRef.current.size >= 2) return
+      const action = resolvePointerAction(
+        e.pointerType,
+        activePointersRef.current.size,  // global capture handler already updated this
+        inputModeRef.current,
+        tool.type,
+      )
+      if (action === 'gesture') return
 
+      if (action === 'pan') {
+        isPanningRef.current = true
+        panLastPtRef.current = { x: e.clientX, y: e.clientY }
+        overlayRef.current?.setPointerCapture(e.pointerId)
+        return
+      }
+
+      // action === 'draw'
       if (tool.type === 'lasso' || selection.isPasting()) {
         selection.handlePointerDown(e)
       } else {
         drawing.handlePointerDown(e)
       }
     },
-    [tool.type, selection, drawing],
+    [tool.type, selection, drawing, overlayRef],
   )
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
-      // Block drawing/selection during pinch
+      // 2+ touch pointers → gesture mode handled by global capture handler
       if (activePointersRef.current.size >= 2) return
+
+      if (isPanningRef.current) {
+        const dx = e.clientX - panLastPtRef.current.x
+        const dy = e.clientY - panLastPtRef.current.y
+        panLastPtRef.current = { x: e.clientX, y: e.clientY }
+        setNotebookPan(prev => ({ x: prev.x + dx, y: prev.y + dy }))
+        return
+      }
 
       if (tool.type === 'lasso' || selection.isPasting()) {
         selection.handlePointerMove(e)
@@ -543,13 +615,18 @@ export default function App() {
 
   const handlePointerUp = useCallback(
     (e: React.PointerEvent) => {
+      if (isPanningRef.current) {
+        isPanningRef.current = false
+        overlayRef.current?.releasePointerCapture(e.pointerId)
+        return
+      }
       if (tool.type === 'lasso' || selection.isPasting()) {
         selection.handlePointerUp(e)
       } else {
         drawing.handlePointerUp(e)
       }
     },
-    [tool.type, selection, drawing],
+    [tool.type, selection, drawing, overlayRef],
   )
 
   // ── Export / Save ────────────────────────────────────────────
@@ -703,6 +780,7 @@ export default function App() {
         open={sidebarOpen}
         onToggle={() => setSidebarOpen(o => !o)}
         tool={tool}
+        inputMode={inputMode}
         textObjects={memoTextObjects}
         isTextActive={isTextActive}
         textColor={tool.color}
@@ -819,6 +897,10 @@ export default function App() {
         onWritingModeChange={setWritingMode}
         textFontSize={textFontSize}
         onTextFontSizeChange={setTextFontSize}
+        stabilizationEnabled={stabilizationEnabled}
+        onToggleStabilization={() => setStabilizationEnabled(v => !v)}
+        inputMode={inputMode}
+        onInputModeChange={setInputMode}
       />
 
       {/* Page overview panel */}

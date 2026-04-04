@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import type { DrawingTool, SaveStatus, TextWritingMode } from '../types'
+import type { DrawingTool, SaveStatus, TextWritingMode, InputMode } from '../types'
 import { type ToolType } from '../types'
 import '../styles/Toolbar.css'
 
@@ -48,6 +48,12 @@ interface ToolbarProps {
   onWritingModeChange: (mode: TextWritingMode) => void
   textFontSize: number
   onTextFontSizeChange: (size: number) => void
+  // Stabilization
+  stabilizationEnabled: boolean
+  onToggleStabilization: () => void
+  // Input mode
+  inputMode: InputMode
+  onInputModeChange: (mode: InputMode) => void
 }
 
 export default function Toolbar({
@@ -86,6 +92,10 @@ export default function Toolbar({
   onWritingModeChange,
   textFontSize,
   onTextFontSizeChange,
+  stabilizationEnabled,
+  onToggleStabilization,
+  inputMode,
+  onInputModeChange,
 }: ToolbarProps) {
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [showColorPicker, setShowColorPicker] = useState(false)
@@ -118,6 +128,23 @@ export default function Toolbar({
         <button className="tool-btn tool-btn--labeled" onClick={onRedo} disabled={!canRedo}>
           ↪<span className="tool-label">やり直</span>
         </button>
+      </div>
+
+      <div className="toolbar-sep" />
+
+      {/* Input mode switcher */}
+      <div className="toolbar-group">
+        {(['auto', 'draw', 'pan'] as InputMode[]).map(m => (
+          <button
+            key={m}
+            className={`tool-btn tool-btn--labeled ${inputMode === m ? 'active' : ''}`}
+            onClick={() => onInputModeChange(m)}
+            title={m === 'auto' ? '自動（ペン=描画、指=パン）' : m === 'draw' ? '描画モード' : 'パンモード'}
+          >
+            {m === 'auto' ? '⟳' : m === 'draw' ? '✏' : '✥'}
+            <span className="tool-label">{m === 'auto' ? 'AUTO' : m === 'draw' ? 'DRAW' : 'PAN'}</span>
+          </button>
+        ))}
       </div>
 
       <div className="toolbar-sep" />
@@ -227,18 +254,30 @@ export default function Toolbar({
           </div>
         </>
       ) : (tool.type === 'pen' || tool.type === 'eraser') ? (
-        <div className="toolbar-group">
-          <input
-            type="range"
-            className="size-slider"
-            min={1}
-            max={30}
-            value={tool.size}
-            onChange={e => setSize(parseInt(e.target.value))}
-            title={`${tool.size}px`}
-          />
-          <span className="size-label">{tool.size}px</span>
-        </div>
+        <>
+          <div className="toolbar-group">
+            <input
+              type="range"
+              className="size-slider"
+              min={1}
+              max={30}
+              value={tool.size}
+              onChange={e => setSize(parseInt(e.target.value))}
+              title={`${tool.size}px`}
+            />
+            <span className="size-label">{tool.size}px</span>
+          </div>
+          <div className="toolbar-sep" />
+          <div className="toolbar-group">
+            <button
+              className={`tool-btn tool-btn--labeled ${stabilizationEnabled ? 'active' : ''}`}
+              onClick={onToggleStabilization}
+              title="手ブレ補正のオン/オフ"
+            >
+              ✦<span className="tool-label">補正</span>
+            </button>
+          </div>
+        </>
       ) : null}
 
       <div className="toolbar-sep" />
