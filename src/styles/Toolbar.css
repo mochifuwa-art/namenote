@@ -274,3 +274,60 @@
   background: rgba(255, 255, 255, 0.08);
   margin: 2px 0;
 }
+
+/* ── Stabilization slider ────────────────────────────────────────── */
+.toolbar-group--stab {
+  flex-shrink: 0;
+}
+
+.stab-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: default;
+  user-select: none;
+}
+
+.stab-label__text {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.55);
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+
+.stab-label__val {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.75);
+  min-width: 24px;
+  text-align: right;
+}
+
+.stab-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 72px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.18);
+  outline: none;
+  cursor: pointer;
+}
+
+.stab-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #c8a87a;
+  border: none;
+}
+
+.stab-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #c8a87a;
+  border: none;
+}
