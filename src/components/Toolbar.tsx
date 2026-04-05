@@ -16,6 +16,88 @@ const PRESET_COLORS = [
 
 const TEXT_FONT_SIZES = [10, 14, 18, 24, 32, 48]
 
+// ── SVG icons ─────────────────────────────────────────────────────────────
+const IconPen = () => (
+  <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M11 1.5l2.5 2.5-8 8L3 13l.5-2.5 7.5-9z"/>
+    <path d="M9.5 3l2.5 2.5"/>
+  </svg>
+)
+
+const IconEraser = () => (
+  <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M11.5 4L8 7.5l-4 4H8l5.5-5.5L11.5 4z"/>
+    <path d="M2 13h11"/>
+    <path d="M4 11.5L2 13"/>
+  </svg>
+)
+
+const IconLasso = () => (
+  <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="2 1.5">
+    <rect x="2.5" y="2.5" width="10" height="10" rx="2"/>
+  </svg>
+)
+
+const IconText = () => (
+  <svg width="15" height="15" viewBox="0 0 15 15" fill="currentColor">
+    <path d="M3 3h9v2H9v7H6V5H3V3z"/>
+  </svg>
+)
+
+const IconUndo = () => (
+  <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 6H9.5a3 3 0 010 6H6"/>
+    <path d="M4 6L2 4M4 6L2 8"/>
+  </svg>
+)
+
+const IconRedo = () => (
+  <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M11 6H5.5a3 3 0 000 6H9"/>
+    <path d="M11 6l2-2M11 6l2 2"/>
+  </svg>
+)
+
+const IconOverview = () => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
+    <rect x="1.5" y="1.5" width="4.5" height="4.5" rx="1"/>
+    <rect x="8" y="1.5" width="4.5" height="4.5" rx="1"/>
+    <rect x="1.5" y="8" width="4.5" height="4.5" rx="1"/>
+    <rect x="8" y="8" width="4.5" height="4.5" rx="1"/>
+  </svg>
+)
+
+const IconAuto = () => (
+  <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round">
+    <circle cx="6.5" cy="6.5" r="4.5"/>
+    <path d="M6.5 4v2.5l1.5 1.5"/>
+  </svg>
+)
+
+const IconDraw = () => (
+  <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9.5 1.5l2 2-6 6L3 11l1.5-2.5 5-7z"/>
+  </svg>
+)
+
+const IconPan = () => (
+  <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M6.5 1.5v10M1.5 6.5h10"/>
+    <path d="M4 4l-2.5 2.5L4 9"/>
+    <path d="M9 4l2.5 2.5L9 9"/>
+    <path d="M4 4l2.5-2.5L9 4"/>
+    <path d="M4 9l2.5 2.5L9 9"/>
+  </svg>
+)
+
+const IconFile = () => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M8 2H3.5A1.5 1.5 0 002 3.5v7A1.5 1.5 0 003.5 12h7A1.5 1.5 0 0012 10.5V6L8 2z"/>
+    <path d="M8 2v4h4"/>
+  </svg>
+)
+
+// ── Props ──────────────────────────────────────────────────────────────────
 interface ToolbarProps {
   tool: DrawingTool
   onToolChange: (t: DrawingTool) => void
@@ -48,15 +130,12 @@ interface ToolbarProps {
   onUndo: () => void
   onRedo: () => void
   onOpenOverview: () => void
-  // Text tool props
   writingMode: TextWritingMode
   onWritingModeChange: (mode: TextWritingMode) => void
   textFontSize: number
   onTextFontSizeChange: (size: number) => void
-  // Stabilization
-  stabilizationStrength: number         // 0 = off, 1–100 = string length strength
+  stabilizationStrength: number
   onStabilizationStrengthChange: (v: number) => void
-  // Input mode
   inputMode: InputMode
   onInputModeChange: (mode: InputMode) => void
 }
@@ -111,91 +190,97 @@ export default function Toolbar({
 
   const setToolType = (type: ToolType) => onToolChange({ ...tool, type })
   const setColor = (color: string) => {
-    // Keep current tool type when picking color (don't switch text→pen)
-    onToolChange({ ...tool, color: color, type: tool.type === 'text' ? 'text' : 'pen' })
+    onToolChange({ ...tool, color, type: tool.type === 'text' ? 'text' : 'pen' })
     setShowColorPicker(false)
   }
   const setSize = (size: number) => onToolChange({ ...tool, size })
 
-  const saveIndicator = saveStatus === 'saved' ? '●' : saveStatus === 'saving' ? '◌' : '●'
-  const saveColor = saveStatus === 'saved' ? '#888' : saveStatus === 'saving' ? '#f39c12' : '#e74c3c'
+  const saveDotColor = saveStatus === 'saved' ? '#6b7280' : saveStatus === 'saving' ? '#f59e0b' : '#ef4444'
+
+  const MODE_CONFIG: { id: InputMode; label: string; icon: React.ReactNode; title: string }[] = [
+    { id: 'auto', label: 'AUTO', icon: <IconAuto />, title: '自動（ペン=描画 / 指=パン）' },
+    { id: 'draw', label: 'DRAW', icon: <IconDraw />, title: 'すべての入力で描画' },
+    { id: 'pan',  label: 'PAN',  icon: <IconPan />,  title: 'すべての入力でパン' },
+  ]
 
   return (
-    <div
-      className="toolbar"
-      onPointerDown={e => e.stopPropagation()}
-    >
-      {/* Undo / Redo */}
-      <div className="toolbar-group">
-        <button className="tool-btn tool-btn--labeled" onClick={onUndo} disabled={!canUndo}>
-          ↩<span className="tool-label">戻す</span>
+    <div className="toolbar" onPointerDown={e => e.stopPropagation()}>
+
+      {/* ── Undo / Redo ─────────────────────────────────────── */}
+      <div className="toolbar-pod">
+        <button className="tool-btn" onClick={onUndo} disabled={!canUndo} title="取り消し (Ctrl+Z)">
+          <IconUndo />
         </button>
-        <button className="tool-btn tool-btn--labeled" onClick={onRedo} disabled={!canRedo}>
-          ↪<span className="tool-label">やり直</span>
+        <button className="tool-btn" onClick={onRedo} disabled={!canRedo} title="やり直し (Ctrl+Y)">
+          <IconRedo />
         </button>
       </div>
 
       <div className="toolbar-sep" />
 
-      {/* Input mode switcher */}
-      <div className="toolbar-group">
-        {(['auto', 'draw', 'pan'] as InputMode[]).map(m => (
+      {/* ── Input mode segmented control ────────────────────── */}
+      <div className="seg-ctrl">
+        {MODE_CONFIG.map(m => (
           <button
-            key={m}
-            className={`tool-btn tool-btn--labeled ${inputMode === m ? 'active' : ''}`}
-            onClick={() => onInputModeChange(m)}
-            title={m === 'auto' ? '自動（ペン=描画、指=パン）' : m === 'draw' ? '描画モード' : 'パンモード'}
+            key={m.id}
+            className={`seg-btn ${inputMode === m.id ? 'active' : ''}`}
+            onClick={() => onInputModeChange(m.id)}
+            title={m.title}
           >
-            {m === 'auto' ? '⟳' : m === 'draw' ? '✏' : '✥'}
-            <span className="tool-label">{m === 'auto' ? 'AUTO' : m === 'draw' ? 'DRAW' : 'PAN'}</span>
+            {m.icon}
+            {m.label}
           </button>
         ))}
       </div>
 
       <div className="toolbar-sep" />
 
-      {/* Tool buttons */}
-      <div className="toolbar-group">
+      {/* ── Drawing tools ───────────────────────────────────── */}
+      <div className="toolbar-pod">
         <button
           className={`tool-btn tool-btn--labeled ${tool.type === 'pen' ? 'active' : ''}`}
           onClick={() => setToolType('pen')}
+          title="ペン"
         >
-          ✏<span className="tool-label">ペン</span>
+          <IconPen /><span className="tool-label">ペン</span>
         </button>
         <button
           className={`tool-btn tool-btn--labeled ${tool.type === 'eraser' ? 'active' : ''}`}
           onClick={() => setToolType('eraser')}
+          title="消しゴム"
         >
-          ⌫<span className="tool-label">消しゴム</span>
+          <IconEraser /><span className="tool-label">消す</span>
         </button>
         <button
           className={`tool-btn tool-btn--labeled ${tool.type === 'lasso' ? 'active' : ''}`}
           onClick={() => setToolType('lasso')}
+          title="なげなわ選択"
         >
-          ⬚<span className="tool-label">選択</span>
+          <IconLasso /><span className="tool-label">選択</span>
         </button>
         <button
           className={`tool-btn tool-btn--labeled ${tool.type === 'text' ? 'active' : ''}`}
           onClick={() => setToolType('text')}
+          title="テキスト"
         >
-          Ａ<span className="tool-label">テキスト</span>
+          <IconText /><span className="tool-label">テキスト</span>
         </button>
       </div>
 
       <div className="toolbar-sep" />
 
-      {/* Color */}
-      <div className="toolbar-group" ref={colorGroupRef}>
+      {/* ── Color ───────────────────────────────────────────── */}
+      <div className="toolbar-pod" ref={colorGroupRef} style={{ padding: '4px 6px' }}>
         <button
-          className="color-btn"
-          style={{ background: tool.color, outline: showColorPicker ? '2px solid #fff' : 'none' }}
+          className={`color-btn ${showColorPicker ? 'color-btn--active' : ''}`}
+          style={{ background: tool.color }}
           onClick={() => {
             const left = colorGroupRef.current?.getBoundingClientRect().left ?? 12
             setColorPopupLeft(left)
             setShowColorPicker(v => !v)
             setShowExportMenu(false)
           }}
-          title="色"
+          title="色を選択"
         />
         {showColorPicker && createPortal(
           <>
@@ -205,8 +290,8 @@ export default function Toolbar({
                 {PRESET_COLORS.map(c => (
                   <button
                     key={c}
-                    className="color-swatch"
-                    style={{ background: c, outline: c === tool.color ? '2px solid #60a5fa' : 'none' }}
+                    className={`color-swatch ${c === tool.color ? 'color-swatch--active' : ''}`}
+                    style={{ background: c }}
                     onClick={() => setColor(c)}
                   />
                 ))}
@@ -215,7 +300,7 @@ export default function Toolbar({
                 type="color"
                 value={tool.color}
                 onChange={e => onToolChange({ ...tool, color: e.target.value, type: tool.type === 'text' ? 'text' : 'pen' })}
-                style={{ width: '100%', marginTop: 6, cursor: 'pointer' }}
+                style={{ width: '100%', marginTop: 6, cursor: 'pointer', height: 30, borderRadius: 6, border: 'none' }}
               />
             </div>
           </>,
@@ -223,147 +308,138 @@ export default function Toolbar({
         )}
       </div>
 
-      {/* Size / Font size — text tool shows font sizes, others show brush sizes */}
+      {/* ── Size / Font size (contextual) ───────────────────── */}
       {tool.type === 'text' ? (
         <>
-          <div className="toolbar-group size-group">
+          <div className="toolbar-pod" style={{ gap: 2, padding: 3 }}>
             {TEXT_FONT_SIZES.map(s => (
               <button
                 key={s}
                 className={`size-btn ${textFontSize === s ? 'active' : ''}`}
                 onClick={() => onTextFontSizeChange(s)}
                 title={`${s}pt`}
-                style={{ fontSize: 11, minWidth: 26 }}
               >
                 {s}
               </button>
             ))}
           </div>
           <div className="toolbar-sep" />
-          {/* Writing mode toggle */}
-          <div className="toolbar-group">
+          <div className="toolbar-pod">
             <button
               className={`tool-btn ${writingMode === 'horizontal-tb' ? 'active' : ''}`}
               onClick={() => onWritingModeChange('horizontal-tb')}
               title="横書き"
-            >
-              横書き
-            </button>
+              style={{ fontSize: 12, padding: '0 10px' }}
+            >横書き</button>
             <button
               className={`tool-btn ${writingMode === 'vertical-rl' ? 'active' : ''}`}
               onClick={() => onWritingModeChange('vertical-rl')}
               title="縦書き"
-            >
-              縦書き
-            </button>
+              style={{ fontSize: 12, padding: '0 10px' }}
+            >縦書き</button>
           </div>
         </>
       ) : (tool.type === 'pen' || tool.type === 'eraser') ? (
-        <>
-          <div className="toolbar-group">
+        <div className="toolbar-pod" style={{ padding: '0 10px', gap: 10 }}>
+          <input
+            type="range"
+            className="size-slider"
+            min={1} max={30}
+            value={tool.size}
+            onChange={e => setSize(parseInt(e.target.value))}
+            title={`${tool.size}px`}
+          />
+          <span className="size-label">{tool.size}px</span>
+          <div style={{ width: 1, height: 18, background: 'rgba(255,255,255,0.08)', flexShrink: 0 }} />
+          <label className="stab-label" title="手ブレ補正（0=オフ）">
+            <span className="stab-label__text">補正</span>
             <input
               type="range"
-              className="size-slider"
-              min={1}
-              max={30}
-              value={tool.size}
-              onChange={e => setSize(parseInt(e.target.value))}
-              title={`${tool.size}px`}
+              className="stab-slider"
+              min={0} max={100} step={1}
+              value={stabilizationStrength}
+              onChange={e => onStabilizationStrengthChange(Number(e.target.value))}
             />
-            <span className="size-label">{tool.size}px</span>
-          </div>
-          <div className="toolbar-sep" />
-          <div className="toolbar-group toolbar-group--stab">
-            <label className="stab-label" title="手ブレ補正強度（0=オフ）">
-              <span className="stab-label__text">補正</span>
-              <input
-                type="range"
-                className="stab-slider"
-                min={0}
-                max={100}
-                step={1}
-                value={stabilizationStrength}
-                onChange={e => onStabilizationStrengthChange(Number(e.target.value))}
-              />
-              <span className="stab-label__val">{stabilizationStrength}</span>
-            </label>
-          </div>
-        </>
+            <span className="stab-label__val">{stabilizationStrength}</span>
+          </label>
+        </div>
       ) : null}
 
       <div className="toolbar-sep" />
 
-      {/* ペースト確定/キャンセル */}
+      {/* ── Paste confirm / cancel ──────────────────────────── */}
       {isPasting && (
         <>
-          <div className="toolbar-sep" />
-          <div className="toolbar-group">
+          <div className="toolbar-pod">
             <button
               className="tool-btn"
               onClick={onConfirmPaste}
-              style={{ background: 'rgba(59,130,246,0.85)', color: '#fff', fontWeight: 700, padding: '0 14px', fontSize: 13 }}
+              style={{ background: 'rgba(59,130,246,0.8)', color: '#fff', fontWeight: 700, padding: '0 14px', fontSize: 12 }}
               title="ペーストを確定"
             >確定</button>
             <button
               className="tool-btn"
               onClick={onCancelPaste}
-              style={{ color: 'rgba(248,113,113,0.9)', fontSize: 13 }}
-              title="ペーストをキャンセル"
+              style={{ color: 'rgba(248,113,113,0.9)', fontSize: 12 }}
+              title="キャンセル"
             >✕ キャンセル</button>
           </div>
           <div className="toolbar-sep" />
         </>
       )}
 
-      {/* Selection actions */}
+      {/* ── Selection actions ──────────────────────────────── */}
       {tool.type === 'lasso' && !isPasting && (
         <>
-          <div className="toolbar-group">
-            <button className="tool-btn" onClick={onCut} disabled={!selectionActive} title="切り取り">✂</button>
+          <div className="toolbar-pod">
+            <button className="tool-btn" onClick={onCut} disabled={!selectionActive} title="切り取り" style={{ fontSize: 15 }}>✂</button>
             <button className="tool-btn" onClick={onCopy} disabled={!selectionActive} title="コピー" style={{ fontSize: 12 }}>コピー</button>
             <button className="tool-btn" onClick={onMove} disabled={!selectionActive} title="移動" style={{ fontSize: 12 }}>移動</button>
             <button className="tool-btn" onClick={onPaste} disabled={!hasClipboard} title="貼り付け" style={{ fontSize: 12 }}>貼付</button>
-            <button className="tool-btn" onClick={onDeleteSelection} disabled={!selectionActive} title="削除" style={{ color: 'rgba(248,113,113,0.85)' }}>✕</button>
+            <button className="tool-btn" onClick={onDeleteSelection} disabled={!selectionActive} title="削除" style={{ color: 'rgba(248,113,113,0.85)', fontSize: 15 }}>✕</button>
           </div>
           <div className="toolbar-sep" />
         </>
       )}
 
-      {/* Page navigation */}
-      <div className="toolbar-group">
-        <button className="nav-btn" onClick={onNextSpread} disabled={nextDisabled} title="次のページ">◀</button>
+      {/* ── Page navigation ─────────────────────────────────── */}
+      <div className="toolbar-pod">
+        <button className="nav-btn" onClick={onNextSpread} disabled={nextDisabled} title="前のスプレッド" style={{ fontSize: 13 }}>◀</button>
         <span className="spread-label">{navLabel}</span>
-        <button className="nav-btn" onClick={onPrevSpread} disabled={prevDisabled} title="前のページ">▶</button>
-        <button className="nav-btn add-btn" onClick={onAddSpread} title="スプレッド追加">＋</button>
-        <button className="tool-btn tool-btn--labeled" onClick={onOpenOverview} title="ページ一覧">
-          ⊞<span className="tool-label">一覧</span>
+        <button className="nav-btn" onClick={onPrevSpread} disabled={prevDisabled} title="次のスプレッド" style={{ fontSize: 13 }}>▶</button>
+        <button className="nav-btn add-btn" onClick={onAddSpread} title="スプレッド追加" style={{ fontSize: 17 }}>＋</button>
+        <button className="tool-btn" onClick={onOpenOverview} title="ページ一覧">
+          <IconOverview />
         </button>
       </div>
 
       <div className="toolbar-sep" />
 
-      {/* Save */}
-      <div className="toolbar-group">
-        <button className="tool-btn save-btn" onClick={onSave} title="プロジェクトをファイルに保存">
-          <span style={{ color: saveColor, marginRight: 4 }}>{saveIndicator}</span>保存
+      {/* ── Save ────────────────────────────────────────────── */}
+      <div className="toolbar-pod" style={{ padding: '0 4px' }}>
+        <button className="tool-btn save-btn" onClick={onSave} title="保存">
+          <span className="save-dot" style={{ background: saveDotColor }} />
+          保存
         </button>
       </div>
 
-      {/* File menu */}
-      <div className="toolbar-group">
+      {/* ── File menu ───────────────────────────────────────── */}
+      <div className="toolbar-pod" style={{ padding: '0 4px' }}>
         <button
           className="tool-btn"
           onClick={() => { setShowExportMenu(v => !v); setShowColorPicker(false) }}
           title="ファイル"
+          style={{ gap: 5, padding: '0 10px', fontSize: 12 }}
         >
-          ⋯ ファイル
+          <IconFile />
+          ファイル
         </button>
         {showExportMenu && createPortal(
           <>
             <div className="popup-backdrop" onClick={() => setShowExportMenu(false)} />
             <div className="export-menu">
-              <button onClick={() => { onExportSpreadJpg(); setShowExportMenu(false) }}>このスプレッドをJPG</button>
-              <button onClick={() => { onExportAllPdf(); setShowExportMenu(false) }}>全ページをPDF</button>
+              <button onClick={() => { onExportSpreadJpg(); setShowExportMenu(false) }}>このスプレッドをJPG書き出し</button>
+              <button onClick={() => { onExportAllPdf(); setShowExportMenu(false) }}>全ページをPDF書き出し</button>
               <div className="export-sep" />
               <button onClick={() => { onSaveProjectFile(); setShowExportMenu(false) }}>プロジェクト保存 (.namenote)</button>
               <button onClick={() => { fileInputRef.current?.click(); setShowExportMenu(false) }}>プロジェクトを開く…</button>
@@ -386,7 +462,6 @@ export default function Toolbar({
           onChange={e => {
             const file = e.target.files?.[0]
             if (!file) return
-            // On native, validate extension since accept='*/*' shows all files
             if (isNative && !file.name.endsWith('.namenote') && !file.name.endsWith('.json')) {
               alert(`${file.name} は .namenote ファイルではありません`)
               e.target.value = ''
@@ -408,6 +483,7 @@ export default function Toolbar({
           }}
         />
       </div>
+
     </div>
   )
 }
