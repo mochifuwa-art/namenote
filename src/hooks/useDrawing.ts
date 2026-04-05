@@ -99,6 +99,9 @@ export function useDrawing({
   stabilizationStrength,
 }: UseDrawingOptions) {
   const isDrawingRef = useRef(false)
+  // Set to true when pointerdown happened outside a canvas (pointer held but not yet drawing).
+  // On the first pointermove that enters a canvas we start the stroke there.
+  const pendingPointerRef = useRef(false)
   const lastPointRef = useRef({ x: 0, y: 0 })
   const activeTargetRef = useRef<DrawTarget | null>(null)
   const activeCtxRef = useRef<CanvasRenderingContext2D | null>(null)
@@ -117,6 +120,50 @@ export function useDrawing({
     [tool]
   )
 
+  // Begin an active stroke on the canvas that contains (clientX, clientY).
+  // Called both from handlePointerDown (direct hit) and handlePointerMove
+  // (entry into canvas after a pending outside-origin press).
+  const startStroke = useCallback((
+    clientX: number,
+    clientY: number,
+    pointerId: number,
+    target: DrawTarget,
+    leftRect: DOMRect | null,
+    rightRect: DOMRect | null,
+  ) => {
+    if (target.kind !== 'page') return
+    const canvas = target.side === 'left' ? leftCanvasRef.current : rightCanvasRef.current
+    const rect = target.side === 'left' ? leftRect : rightRect
+    if (!canvas || !rect) return
+
+    onBeforeStroke?.(target)
+
+    const ctx = canvas.getContext('2d')!
+    applyToolToCtx(ctx)
+
+    const coords = toCanvasCoords(clientX, clientY, rect, canvas)
+
+    // Draw initial dot at entry point
+    ctx.beginPath()
+    ctx.arc(coords.x, coords.y, tool.size / 2, 0, Math.PI * 2)
+    ctx.fillStyle = tool.type === 'eraser' ? 'rgba(0,0,0,1)' : tool.color
+    ctx.globalCompositeOperation = tool.type === 'eraser' ? 'destination-out' : 'source-over'
+    ctx.fill()
+
+    const strLen = strengthToStringLength(stabilizationStrength)
+    stabilizerRef.current = strLen > 0 ? new StringStabilizer(coords.x, coords.y, strLen) : null
+
+    isDrawingRef.current = true
+    pendingPointerRef.current = false
+    lastPointRef.current = coords
+    activeTargetRef.current = target
+    activeCtxRef.current = ctx
+    activeRectRef.current = rect
+    activeCanvasRef.current = canvas
+
+    overlayRef.current?.setPointerCapture(pointerId)
+  }, [leftCanvasRef, rightCanvasRef, overlayRef, onBeforeStroke, applyToolToCtx, tool, stabilizationStrength])
+
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (!enabled) return
@@ -125,48 +172,36 @@ export function useDrawing({
       const leftRect = leftCanvasRef.current?.getBoundingClientRect() ?? null
       const rightRect = rightCanvasRef.current?.getBoundingClientRect() ?? null
       const target = getDrawTarget(e.clientX, e.clientY, leftRect, rightRect)
-      if (!target || target.kind !== 'page') return
 
-      const canvas = target.side === 'left' ? leftCanvasRef.current : rightCanvasRef.current
-      const rect = target.side === 'left' ? leftRect : rightRect
-      if (!canvas || !rect) return
+      if (!target || target.kind !== 'page') {
+        // Pointer went down outside any canvas — mark as pending so that the
+        // first pointermove that enters a canvas will begin the stroke there.
+        pendingPointerRef.current = true
+        overlayRef.current?.setPointerCapture(e.pointerId)
+        return
+      }
 
-      onBeforeStroke?.(target)
-
-      const ctx = canvas.getContext('2d')!
-      applyToolToCtx(ctx)
-
-      const coords = toCanvasCoords(e.clientX, e.clientY, rect, canvas)
-
-      // Draw initial dot
-      ctx.beginPath()
-      ctx.arc(coords.x, coords.y, tool.size / 2, 0, Math.PI * 2)
-      ctx.fillStyle = tool.type === 'eraser' ? 'rgba(0,0,0,1)' : tool.color
-      ctx.globalCompositeOperation = tool.type === 'eraser' ? 'destination-out' : 'source-over'
-      ctx.fill()
-
-      // Initialize string stabilizer
-      const strLen = strengthToStringLength(stabilizationStrength)
-      stabilizerRef.current = strLen > 0
-        ? new StringStabilizer(coords.x, coords.y, strLen)
-        : null
-
-      isDrawingRef.current = true
-      lastPointRef.current = coords
-      activeTargetRef.current = target
-      activeCtxRef.current = ctx
-      activeRectRef.current = rect
-      activeCanvasRef.current = canvas
-
-      overlayRef.current?.setPointerCapture(e.pointerId)
+      startStroke(e.clientX, e.clientY, e.pointerId, target, leftRect, rightRect)
     },
-    [enabled, tool, leftCanvasRef, rightCanvasRef, overlayRef, onBeforeStroke, applyToolToCtx, stabilizationStrength]
+    [enabled, startStroke, leftCanvasRef, rightCanvasRef, overlayRef]
   )
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
-      if (!isDrawingRef.current || !activeCtxRef.current || !activeCanvasRef.current) return
       if (e.pointerType === 'touch' && e.isPrimary === false) return
+
+      // Pointer was held outside a canvas — check if we've entered one now
+      if (pendingPointerRef.current && !isDrawingRef.current) {
+        const leftRect = leftCanvasRef.current?.getBoundingClientRect() ?? null
+        const rightRect = rightCanvasRef.current?.getBoundingClientRect() ?? null
+        const target = getDrawTarget(e.clientX, e.clientY, leftRect, rightRect)
+        if (target && target.kind === 'page') {
+          startStroke(e.clientX, e.clientY, e.pointerId, target, leftRect, rightRect)
+        }
+        return
+      }
+
+      if (!isDrawingRef.current || !activeCtxRef.current || !activeCanvasRef.current) return
 
       const ctx = activeCtxRef.current
       const canvas = activeCanvasRef.current
@@ -193,6 +228,7 @@ export function useDrawing({
 
   const handlePointerUp = useCallback(
     (e: React.PointerEvent) => {
+      pendingPointerRef.current = false
       if (!isDrawingRef.current) return
 
       // Snap to exact pointer position so endpoint is accurate
@@ -221,6 +257,7 @@ export function useDrawing({
 
   // Cancel an in-progress stroke (e.g. when a second finger touches down mid-draw)
   const cancelStroke = useCallback(() => {
+    pendingPointerRef.current = false
     if (!isDrawingRef.current) return
     isDrawingRef.current = false
     stabilizerRef.current = null
