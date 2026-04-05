@@ -4,6 +4,11 @@ import type { DrawingTool, SaveStatus, TextWritingMode, InputMode } from '../typ
 import { type ToolType } from '../types'
 import '../styles/Toolbar.css'
 
+// On iOS/Android (Capacitor WebView) the Files app may not recognize the
+// custom .namenote extension, so show all files and validate after selection.
+const isNative = !!(window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } })
+  .Capacitor?.isNativePlatform?.()
+
 const PRESET_COLORS = [
   '#1a1a1a', '#444444', '#888888', '#cccccc', '#ffffff',
   '#e74c3c', '#e67e22', '#f1c40f', '#2ecc71', '#3498db', '#9b59b6',
@@ -376,11 +381,18 @@ export default function Toolbar({
         <input
           ref={fileInputRef}
           type="file"
-          accept=".namenote,application/json"
+          accept={isNative ? '*/*' : '.namenote,application/json'}
           style={{ display: 'none' }}
           onChange={e => {
             const file = e.target.files?.[0]
-            if (file) onLoadProjectFile(file)
+            if (!file) return
+            // On native, validate extension since accept='*/*' shows all files
+            if (isNative && !file.name.endsWith('.namenote') && !file.name.endsWith('.json')) {
+              alert(`${file.name} は .namenote ファイルではありません`)
+              e.target.value = ''
+              return
+            }
+            onLoadProjectFile(file)
             e.target.value = ''
           }}
         />
