@@ -28,6 +28,43 @@ function toCanvasCoords(clientX: number, clientY: number, rect: DOMRect, canvas:
   }
 }
 
+/**
+ * Given a line segment from `prev` (outside rect) to `curr` (inside rect),
+ * find the screen-space point where the segment first crosses the rect boundary.
+ * Falls back to `curr` if no intersection is found (e.g. prev was also inside).
+ */
+function findRectEntryPoint(
+  prev: { x: number; y: number },
+  curr: { x: number; y: number },
+  rect: DOMRect,
+): { x: number; y: number } {
+  const dx = curr.x - prev.x
+  const dy = curr.y - prev.y
+  let tMin = Infinity
+
+  const tryEdge = (t: number, coord: number, lo: number, hi: number) => {
+    if (t >= 0 && t <= 1 && coord >= lo && coord <= hi) {
+      tMin = Math.min(tMin, t)
+    }
+  }
+
+  if (dx !== 0) {
+    const tL = (rect.left - prev.x) / dx
+    tryEdge(tL, prev.y + tL * dy, rect.top, rect.bottom)
+    const tR = (rect.right - prev.x) / dx
+    tryEdge(tR, prev.y + tR * dy, rect.top, rect.bottom)
+  }
+  if (dy !== 0) {
+    const tT = (rect.top - prev.y) / dy
+    tryEdge(tT, prev.x + tT * dx, rect.left, rect.right)
+    const tB = (rect.bottom - prev.y) / dy
+    tryEdge(tB, prev.x + tB * dx, rect.left, rect.right)
+  }
+
+  if (tMin === Infinity) return curr
+  return { x: prev.x + tMin * dx, y: prev.y + tMin * dy }
+}
+
 // ── String Filter (Lazy Brush) ──────────────────────────────────────────────
 // The virtual "string" connects the raw pointer to the draw cursor.
 // The cursor only moves when the raw pointer pulls it beyond `stringLength` px.
@@ -102,6 +139,10 @@ export function useDrawing({
   // Set to true when pointerdown happened outside a canvas (pointer held but not yet drawing).
   // On the first pointermove that enters a canvas we start the stroke there.
   const pendingPointerRef = useRef(false)
+  // Last known screen position while in pending (outside-canvas) state.
+  // Used to back-project the exact canvas-edge entry point when the pointer
+  // crosses the boundary between two pointermove samples (fast movement).
+  const lastOutsidePosRef = useRef<{ x: number; y: number } | null>(null)
   const lastPointRef = useRef({ x: 0, y: 0 })
   const activeTargetRef = useRef<DrawTarget | null>(null)
   const activeCtxRef = useRef<CanvasRenderingContext2D | null>(null)
@@ -177,6 +218,7 @@ export function useDrawing({
         // Pointer went down outside any canvas — mark as pending so that the
         // first pointermove that enters a canvas will begin the stroke there.
         pendingPointerRef.current = true
+        lastOutsidePosRef.current = { x: e.clientX, y: e.clientY }
         overlayRef.current?.setPointerCapture(e.pointerId)
         return
       }
@@ -196,7 +238,19 @@ export function useDrawing({
         const rightRect = rightCanvasRef.current?.getBoundingClientRect() ?? null
         const target = getDrawTarget(e.clientX, e.clientY, leftRect, rightRect)
         if (target && target.kind === 'page') {
-          startStroke(e.clientX, e.clientY, e.pointerId, target, leftRect, rightRect)
+          // Back-project to the exact canvas-boundary crossing point so that
+          // fast strokes start at the edge rather than an interior sample.
+          const rect = target.side === 'left' ? leftRect : rightRect
+          const curr = { x: e.clientX, y: e.clientY }
+          const entry = (rect && lastOutsidePosRef.current)
+            ? findRectEntryPoint(lastOutsidePosRef.current, curr, rect)
+            : curr
+          lastOutsidePosRef.current = null
+          startStroke(entry.x, entry.y, e.pointerId, target, leftRect, rightRect)
+        } else {
+          // Still outside — update the last known outside position for the
+          // next sample's entry-point calculation.
+          lastOutsidePosRef.current = { x: e.clientX, y: e.clientY }
         }
         return
       }
@@ -258,6 +312,7 @@ export function useDrawing({
   // Cancel an in-progress stroke (e.g. when a second finger touches down mid-draw)
   const cancelStroke = useCallback(() => {
     pendingPointerRef.current = false
+    lastOutsidePosRef.current = null
     if (!isDrawingRef.current) return
     isDrawingRef.current = false
     stabilizerRef.current = null
