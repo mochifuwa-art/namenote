@@ -10,37 +10,44 @@
   display: flex;
   align-items: center;
   flex-wrap: nowrap;
-  gap: 2px;
-  padding: 0 10px;
+  gap: 4px;
+  padding: 0 12px;
   padding-bottom: max(0px, env(safe-area-inset-bottom));
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
 
-  background: rgba(22, 15, 9, 0.96);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.04), 0 -4px 24px rgba(0, 0, 0, 0.5);
+  background: rgba(16, 10, 5, 0.97);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid rgba(212, 169, 106, 0.12);
+  box-shadow:
+    0 -1px 0 rgba(0, 0, 0, 0.6),
+    0 -6px 32px rgba(0, 0, 0, 0.55),
+    0 0 0 0.5px rgba(255, 255, 255, 0.03) inset;
 }
 
-.toolbar::-webkit-scrollbar {
-  display: none;
-}
+.toolbar::-webkit-scrollbar { display: none; }
 
-/* ── Groups & separators ──────────────────────────────────────── */
-.toolbar-group {
+/* ── Pod: grouped pill container ──────────────────────────────── */
+.toolbar-pod {
   display: flex;
   align-items: center;
-  gap: 1px;
+  gap: 0;
   flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.048);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  padding: 2px;
+  overflow: hidden;
 }
 
+/* ── Separator ────────────────────────────────────────────────── */
 .toolbar-sep {
   width: 1px;
-  height: 24px;
-  background: rgba(255, 255, 255, 0.10);
-  margin: 0 5px;
+  height: 22px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 0 6px;
   flex-shrink: 0;
 }
 
@@ -49,136 +56,270 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 38px;
-  height: 38px;
+  min-width: 36px;
+  height: 36px;
   padding: 0 8px;
   border: none;
   border-radius: 7px;
   background: transparent;
-  color: rgba(255, 255, 255, 0.68);
+  color: rgba(255, 255, 255, 0.52);
   font-size: 13px;
   cursor: pointer;
-  transition: background 0.1s, color 0.1s;
+  transition: background 0.12s, color 0.12s, box-shadow 0.12s;
+  white-space: nowrap;
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  letter-spacing: 0.01em;
+}
+
+/* Inside a pod, buttons get tighter radius */
+.toolbar-pod .tool-btn,
+.toolbar-pod .nav-btn {
+  border-radius: 7px;
+}
+
+/* ── Labeled tool button ──────────────────────────────────────── */
+.tool-btn--labeled {
+  flex-direction: column;
+  gap: 3px;
+  height: auto;
+  min-height: 48px;
+  padding: 6px 9px;
+  font-size: 16px;
+}
+
+.tool-label {
+  font-size: 8.5px;
+  line-height: 1;
+  color: inherit;
+  opacity: 0.65;
+  letter-spacing: 0.06em;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.tool-btn:hover, .nav-btn:hover {
+  background: rgba(255, 255, 255, 0.085);
+  color: rgba(255, 255, 255, 0.9);
+}
+.tool-btn:active, .nav-btn:active {
+  background: rgba(255, 255, 255, 0.13);
+}
+
+/* Warm amber active state */
+.tool-btn.active {
+  background: rgba(212, 169, 106, 0.18);
+  color: #ddb87a;
+  box-shadow: 0 0 0 1px rgba(212, 169, 106, 0.32) inset;
+}
+.tool-btn.active .tool-label {
+  opacity: 0.85;
+}
+
+.tool-btn:disabled, .nav-btn:disabled {
+  opacity: 0.24;
+  cursor: not-allowed;
+}
+
+/* ── Segmented control (input mode) ──────────────────────────── */
+.seg-ctrl {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 2px;
+}
+
+.seg-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.42);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, box-shadow 0.12s;
   white-space: nowrap;
   flex-shrink: 0;
   -webkit-tap-highlight-color: transparent;
   user-select: none;
 }
 
-/* ── Labeled tool button ──────────────────────────────────────── */
-.tool-btn--labeled {
-  flex-direction: column;
-  gap: 2px;
-  height: auto;
-  min-height: 46px;
-  padding: 5px 8px;
-  font-size: 18px;
+.seg-btn svg {
+  flex-shrink: 0;
+  opacity: 0.8;
 }
 
-.tool-label {
-  font-size: 9px;
-  line-height: 1;
-  color: inherit;
-  opacity: 0.7;
-  letter-spacing: 0.04em;
+.seg-btn:hover {
+  color: rgba(255, 255, 255, 0.75);
+  background: rgba(255, 255, 255, 0.06);
 }
 
-.tool-btn:hover, .nav-btn:hover {
-  background: rgba(255, 255, 255, 0.09);
-  color: rgba(255, 255, 255, 0.92);
-}
-
-.tool-btn:active, .nav-btn:active {
-  background: rgba(255, 255, 255, 0.14);
-}
-
-.tool-btn.active {
-  background: rgba(96, 165, 250, 0.18);
-  color: #93c5fd;
-  box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.3) inset;
-}
-
-.tool-btn.active .tool-label {
-  opacity: 0.9;
-}
-
-.tool-btn:disabled, .nav-btn:disabled {
-  opacity: 0.28;
-  cursor: not-allowed;
+.seg-btn.active {
+  background: rgba(212, 169, 106, 0.22);
+  color: #e4c98a;
+  box-shadow: 0 0 0 1px rgba(212, 169, 106, 0.35) inset,
+              0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 /* ── Color button ─────────────────────────────────────────────── */
 .color-btn {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.28);
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1.5px solid rgba(255, 255, 255, 0.22);
   cursor: pointer;
   flex-shrink: 0;
   transition: border-color 0.12s, transform 0.1s, box-shadow 0.12s;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5), 0 0 0 0 rgba(212,169,106,0);
 }
 
 .color-btn:hover {
-  border-color: rgba(255, 255, 255, 0.65);
-  transform: scale(1.08);
+  border-color: rgba(255, 255, 255, 0.6);
+  transform: scale(1.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5), 0 0 0 2px rgba(212,169,106,0.3);
 }
 
-/* Transparent backdrop to close popup on outside tap */
+.color-btn--active {
+  border-color: #ddb87a;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.5), 0 0 0 2px rgba(212,169,106,0.4);
+}
+
+/* ── Popups ───────────────────────────────────────────────────── */
 .popup-backdrop {
   position: fixed;
   inset: 0;
   z-index: 199;
 }
 
-/* Color popup */
 .color-popup {
   position: fixed;
-  bottom: calc(70px + env(safe-area-inset-bottom, 0px));
-  background: rgba(22, 15, 9, 0.98);
-  border: 1px solid rgba(255, 255, 255, 0.11);
-  border-radius: 12px;
-  padding: 12px;
-  width: 192px;
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6), 0 1px 0 rgba(255,255,255,0.06) inset;
+  bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  background: rgba(18, 12, 6, 0.99);
+  border: 1px solid rgba(212, 169, 106, 0.18);
+  border-radius: 14px;
+  padding: 14px;
+  width: 196px;
+  box-shadow:
+    0 12px 48px rgba(0, 0, 0, 0.7),
+    0 1px 0 rgba(255, 255, 255, 0.05) inset;
   z-index: 200;
 }
 
 .color-grid {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
-  gap: 5px;
-  margin-bottom: 8px;
+  gap: 6px;
+  margin-bottom: 10px;
 }
 
 .color-swatch {
   width: 24px;
   height: 24px;
-  border-radius: 5px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   cursor: pointer;
   transition: transform 0.1s, box-shadow 0.1s;
 }
 
 .color-swatch:hover {
-  transform: scale(1.18);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  transform: scale(1.2);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
 }
 
-/* ── Brush size slider ─────────────────────────────────────────── */
-.size-slider {
-  width: 88px;
-  accent-color: #60a5fa;
+.color-swatch--active {
+  outline: 2px solid #ddb87a;
+  outline-offset: 1px;
+}
+
+/* ── Range sliders ────────────────────────────────────────────── */
+.size-slider,
+.stab-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.15);
+  outline: none;
   cursor: pointer;
   flex-shrink: 0;
 }
 
+.size-slider { width: 80px; }
+.stab-slider { width: 68px; }
+
+.size-slider::-webkit-slider-thumb,
+.stab-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #c8a87a;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+  cursor: pointer;
+}
+
+.size-slider::-moz-range-thumb,
+.stab-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #c8a87a;
+  border: 2px solid rgba(255,255,255,0.25);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+  cursor: pointer;
+}
+
 .size-label {
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.45);
-  min-width: 28px;
+  color: rgba(255, 255, 255, 0.38);
+  min-width: 30px;
   text-align: right;
   flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+/* ── Stabilization label ──────────────────────────────────────── */
+.toolbar-group--stab { flex-shrink: 0; }
+
+.stab-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: default;
+  user-select: none;
+}
+
+.stab-label__text {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.38);
+  white-space: nowrap;
+}
+
+.stab-label__val {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.62);
+  min-width: 22px;
+  text-align: right;
 }
 
 /* ── Font size buttons ────────────────────────────────────────── */
@@ -188,11 +329,11 @@
   justify-content: center;
   min-width: 28px;
   height: 28px;
-  padding: 0 4px;
+  padding: 0 5px;
   border: none;
-  border-radius: 5px;
+  border-radius: 6px;
   background: transparent;
-  color: rgba(255, 255, 255, 0.55);
+  color: rgba(255, 255, 255, 0.45);
   font-size: 10px;
   cursor: pointer;
   transition: background 0.1s, color 0.1s;
@@ -201,76 +342,87 @@
 }
 
 .size-btn:hover {
-  background: rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.08);
   color: rgba(255, 255, 255, 0.9);
 }
 
 .size-btn.active {
-  background: rgba(96, 165, 250, 0.18);
-  color: #93c5fd;
-  box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.28) inset;
+  background: rgba(212, 169, 106, 0.2);
+  color: #ddb87a;
+  box-shadow: 0 0 0 1px rgba(212, 169, 106, 0.32) inset;
 }
 
 /* ── Page navigation ──────────────────────────────────────────── */
 .spread-label {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.5);
-  min-width: 42px;
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.42);
+  min-width: 40px;
   text-align: center;
-  padding: 0 2px;
+  padding: 0 3px;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
 }
 
 .add-btn {
   font-size: 18px;
-  color: rgba(255, 255, 255, 0.45);
+  color: rgba(255, 255, 255, 0.38);
 }
 
 /* ── Save button ──────────────────────────────────────────────── */
 .save-btn {
   font-size: 12px;
-  gap: 4px;
+  gap: 5px;
+  font-weight: 500;
+}
+
+.save-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
 /* ── Export menu ──────────────────────────────────────────────── */
 .export-menu {
   position: fixed;
-  bottom: calc(70px + env(safe-area-inset-bottom, 0px));
-  right: 10px;
-  background: rgba(22, 15, 9, 0.98);
-  border: 1px solid rgba(255, 255, 255, 0.11);
-  border-radius: 12px;
+  bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  right: 12px;
+  background: rgba(18, 12, 6, 0.99);
+  border: 1px solid rgba(212, 169, 106, 0.15);
+  border-radius: 14px;
   overflow: hidden;
   max-height: calc(100dvh - 100px);
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6), 0 1px 0 rgba(255,255,255,0.06) inset;
+  box-shadow:
+    0 12px 48px rgba(0, 0, 0, 0.7),
+    0 1px 0 rgba(255, 255, 255, 0.04) inset;
   z-index: 200;
-  min-width: 210px;
+  min-width: 220px;
 }
 
 .export-menu button {
   display: block;
   width: 100%;
-  padding: 11px 16px;
+  padding: 12px 18px;
   text-align: left;
   background: transparent;
   border: none;
-  color: rgba(255, 255, 255, 0.78);
-  font-size: 13px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 13.5px;
   cursor: pointer;
-  transition: background 0.1s;
+  transition: background 0.1s, color 0.1s;
   white-space: nowrap;
   -webkit-tap-highlight-color: transparent;
+  letter-spacing: 0.01em;
 }
 
 .export-menu button:hover {
-  background: rgba(255, 255, 255, 0.07);
+  background: rgba(212, 169, 106, 0.1);
   color: rgba(255, 255, 255, 0.95);
 }
 
 .export-sep {
   height: 1px;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.07);
   margin: 2px 0;
 }

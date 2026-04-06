@@ -5,6 +5,11 @@ type HistoryEntry =
   | { kind: 'canvas'; target: 'left' | 'right' | 'memo'; data: ImageData }
   | { kind: 'text'; snapshot: TextObject[] }
 
+interface SpreadStacks {
+  undo: HistoryEntry[]
+  redo: HistoryEntry[]
+}
+
 const MAX_HISTORY = 20
 
 export function useHistory(
@@ -14,8 +19,11 @@ export function useHistory(
   getTextObjects: () => TextObject[],
   onTextRestore: (snapshot: TextObject[]) => void,
 ) {
+  // Active stacks for the currently visible spread
   const undoStack = useRef<HistoryEntry[]>([])
   const redoStack = useRef<HistoryEntry[]>([])
+  // Per-spread saved stacks; keyed by spread index
+  const savedStacks = useRef<Map<number, SpreadStacks>>(new Map())
   const [canUndo, setCanUndo] = useState(false)
   const [canRedo, setCanRedo] = useState(false)
 
@@ -87,11 +95,30 @@ export function useHistory(
     sync()
   }, [getCanvas, getTextObjects, onTextRestore, sync])
 
-  const clearPageHistory = useCallback(() => {
-    undoStack.current = []
-    redoStack.current = []
+  /**
+   * Save the active undo/redo stacks for `fromSpread`, then restore (or create
+   * fresh) stacks for `toSpread`. Called on every page navigation.
+   */
+  const switchSpread = useCallback((fromSpread: number, toSpread: number) => {
+    // Save stacks for the spread we're leaving
+    savedStacks.current.set(fromSpread, {
+      undo: undoStack.current,
+      redo: redoStack.current,
+    })
+    // Restore or initialize stacks for the spread we're entering
+    const saved = savedStacks.current.get(toSpread)
+    undoStack.current = saved ? saved.undo : []
+    redoStack.current = saved ? saved.redo : []
     sync()
   }, [sync])
 
-  return { push, pushText, undo, redo, canUndo, canRedo, clearPageHistory }
+  /** Wipe all saved stacks (e.g. after loading a new project file). */
+  const clearAllHistory = useCallback(() => {
+    undoStack.current = []
+    redoStack.current = []
+    savedStacks.current.clear()
+    sync()
+  }, [sync])
+
+  return { push, pushText, undo, redo, canUndo, canRedo, switchSpread, clearAllHistory }
 }

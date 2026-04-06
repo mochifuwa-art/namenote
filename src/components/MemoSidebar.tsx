@@ -1,5 +1,5 @@
 import { forwardRef, useRef, useCallback, useEffect } from 'react'
-import type { DrawingTool, TextObject, TextWritingMode } from '../types'
+import type { DrawingTool, TextObject, TextWritingMode, InputMode } from '../types'
 import TextLayer from './TextLayer'
 import '../styles/MemoSidebar.css'
 
@@ -10,6 +10,7 @@ interface MemoSidebarProps {
   open: boolean
   onToggle: () => void
   tool: DrawingTool
+  inputMode: InputMode
   // Text layer props
   textObjects: TextObject[]
   isTextActive: boolean
@@ -29,6 +30,7 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
       open,
       onToggle,
       tool,
+      inputMode,
       textObjects,
       isTextActive,
       textColor,
@@ -46,6 +48,9 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
     const isDrawingRef = useRef(false)
     const lastPtRef = useRef({ x: 0, y: 0 })
     const activeCtxRef = useRef<CanvasRenderingContext2D | null>(null)
+    // Touch-scroll tracking (AUTO/PAN mode, touch only)
+    const isTouchScrollingRef = useRef(false)
+    const touchScrollLastYRef = useRef(0)
 
     // Initialize canvas size on mount
     useEffect(() => {
@@ -79,8 +84,17 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
 
     const handlePointerDown = useCallback(
       (e: React.PointerEvent<HTMLCanvasElement>) => {
-        if (isTextActive) return          // text tool active → text layer handles events
+        if (isTextActive) return
         if (e.pointerType === 'touch' && !e.isPrimary) return
+
+        // In AUTO/PAN mode, touch → manual scroll; pen/mouse → draw
+        if (e.pointerType === 'touch' && (inputMode === 'auto' || inputMode === 'pan')) {
+          isTouchScrollingRef.current = true
+          touchScrollLastYRef.current = e.clientY
+          e.currentTarget.setPointerCapture(e.pointerId)
+          return
+        }
+
         e.currentTarget.setPointerCapture(e.pointerId)
 
         const canvas = (canvasRef as React.RefObject<HTMLCanvasElement>).current
@@ -101,13 +115,21 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
         lastPtRef.current = pt
         activeCtxRef.current = ctx
       },
-      [canvasRef, applyTool, getCanvasCoords, tool, isTextActive],
+      [canvasRef, applyTool, getCanvasCoords, tool, isTextActive, inputMode],
     )
 
     const handlePointerMove = useCallback(
       (e: React.PointerEvent<HTMLCanvasElement>) => {
-        if (!isDrawingRef.current || !activeCtxRef.current) return
         if (e.pointerType === 'touch' && !e.isPrimary) return
+
+        if (isTouchScrollingRef.current) {
+          const dy = touchScrollLastYRef.current - e.clientY
+          touchScrollLastYRef.current = e.clientY
+          if (scrollRef.current) scrollRef.current.scrollTop += dy
+          return
+        }
+
+        if (!isDrawingRef.current || !activeCtxRef.current) return
 
         const pt = getCanvasCoords(e.clientX, e.clientY)
         const ctx = activeCtxRef.current
@@ -123,6 +145,11 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
 
     const handlePointerUp = useCallback(
       (e: React.PointerEvent<HTMLCanvasElement>) => {
+        if (isTouchScrollingRef.current) {
+          isTouchScrollingRef.current = false
+          e.currentTarget.releasePointerCapture(e.pointerId)
+          return
+        }
         if (!isDrawingRef.current) return
         isDrawingRef.current = false
         activeCtxRef.current = null
@@ -142,6 +169,7 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
               <canvas
                 ref={canvasRef}
                 className="memo-sidebar__canvas"
+                style={{ touchAction: 'none' }}
                 onPointerDown={handlePointerDown}
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}

@@ -1,5 +1,6 @@
 export type ToolType = 'pen' | 'eraser' | 'lasso' | 'text'
 export type TextWritingMode = 'horizontal-tb' | 'vertical-rl'
+export type InputMode = 'auto' | 'draw' | 'pan'
 
 export interface TextObject {
   id: string
