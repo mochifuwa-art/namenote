@@ -104,6 +104,16 @@ export default function App() {
   // Stable ref to drawing.cancelStroke for use in global capture handler
   const cancelStrokeRef = useRef<() => void>(() => {})
 
+  // Stable refs for undo/redo — used by the global capture handler (can't close over state)
+  const undoActionRef = useRef<() => void>(() => {})
+  const redoActionRef = useRef<() => void>(() => {})
+
+  // Multi-finger tap tracking (2-finger = undo, 3-finger = redo)
+  const tapStartTimeRef = useRef(0)
+  const tapMaxFingersRef = useRef(0)
+  const tapStartPosRef = useRef<Map<number, { x: number; y: number }>>(new Map())
+  const tapMovedRef = useRef(false)
+
   // ── Toast ────────────────────────────────────────────────────
   const [toastMsg, setToastMsg] = useState<string | null>(null)
   const [toastKey, setToastKey] = useState(0)
@@ -203,6 +213,9 @@ export default function App() {
   })
   // Keep cancelStrokeRef in sync so the global capture handler can call it
   useEffect(() => { cancelStrokeRef.current = drawing.cancelStroke }, [drawing.cancelStroke])
+  // Keep undo/redo refs in sync for the global capture handler (tap gestures)
+  useEffect(() => { undoActionRef.current = () => { history.undo(); markUnsaved() } }, [history.undo, markUnsaved])
+  useEffect(() => { redoActionRef.current = () => { history.redo(); markUnsaved() } }, [history.redo, markUnsaved])
 
   // ── Selection ────────────────────────────────────────────────
   const selection = useSelection({
@@ -501,8 +514,22 @@ export default function App() {
       if (e.pointerType !== 'touch') return  // ignore synthetic mouse events from Android Chrome
       // Touches starting in the sidebar area are handled by the sidebar, not notebook pinch
       if (sidebarOpenRef.current && e.clientX < sidebarWRef.current) return
+
+      const prevSize = activePointersRef.current.size
       activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
-      if (activePointersRef.current.size === 2) {
+      const newSize = activePointersRef.current.size
+
+      // Tap tracking: initialise on first finger, accumulate max finger count
+      if (prevSize === 0) {
+        tapStartTimeRef.current = Date.now()
+        tapMaxFingersRef.current = 1
+        tapMovedRef.current = false
+        tapStartPosRef.current.clear()
+      }
+      tapStartPosRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+      tapMaxFingersRef.current = Math.max(tapMaxFingersRef.current, newSize)
+
+      if (newSize === 2) {
         // Cancel any in-progress drawing or single-finger pan before entering gesture mode
         cancelStrokeRef.current()
         isPanningRef.current = false
@@ -518,6 +545,18 @@ export default function App() {
       if (e.pointerType !== 'touch') return
       if (!activePointersRef.current.has(e.pointerId)) return  // not a tracked touch
       activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+
+      // Detect finger movement — if any finger moves more than 12px it's not a tap
+      if (!tapMovedRef.current) {
+        const start = tapStartPosRef.current.get(e.pointerId)
+        if (start) {
+          const dx = e.clientX - start.x, dy = e.clientY - start.y
+          if (dx * dx + dy * dy > 144) tapMovedRef.current = true  // 12px threshold
+        }
+      }
+
+      if (activePointersRef.current.size === 2 && !tapMovedRef.current) return  // wait — might still be a tap
+
       if (activePointersRef.current.size === 2) {
         const pts = Array.from(activePointersRef.current.values())
         const dx = pts[1].x - pts[0].x, dy = pts[1].y - pts[0].y
@@ -550,7 +589,22 @@ export default function App() {
         })
       }
     }
-    const onUp = (e: PointerEvent) => activePointersRef.current.delete(e.pointerId)
+    const onUp = (e: PointerEvent) => {
+      activePointersRef.current.delete(e.pointerId)
+      // When all fingers lift, evaluate whether this was a 2/3-finger tap
+      if (activePointersRef.current.size === 0) {
+        const elapsed = Date.now() - tapStartTimeRef.current
+        if (!tapMovedRef.current && elapsed < 300) {
+          if (tapMaxFingersRef.current === 2) {
+            undoActionRef.current()
+          } else if (tapMaxFingersRef.current === 3) {
+            redoActionRef.current()
+          }
+        }
+        tapMaxFingersRef.current = 0
+        tapStartPosRef.current.clear()
+      }
+    }
     window.addEventListener('pointerdown', onDown, { capture: true })
     window.addEventListener('pointermove', onMove, { capture: true })
     window.addEventListener('pointerup', onUp, { capture: true })

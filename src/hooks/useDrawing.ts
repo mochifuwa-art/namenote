@@ -264,9 +264,14 @@ export function useDrawing({
 
       if (!isDrawingRef.current || !activeCtxRef.current || !activeCanvasRef.current) return
 
-      // Compute both rects up front so cross-page transitions can find the other canvas
-      const leftRect = leftCanvasRef.current?.getBoundingClientRect() ?? null
-      const rightRect = rightCanvasRef.current?.getBoundingClientRect() ?? null
+      const currentRect = activeRectRef.current!
+      // Avoid getBoundingClientRect() reflows on every event — only fetch the other
+      // canvas rect when the pointer is near/past the active canvas boundary.
+      const mightCross =
+        e.clientX < currentRect.left || e.clientX > currentRect.right ||
+        e.clientY < currentRect.top  || e.clientY > currentRect.bottom
+      const leftRect  = mightCross ? (leftCanvasRef.current?.getBoundingClientRect()  ?? null) : null
+      const rightRect = mightCross ? (rightCanvasRef.current?.getBoundingClientRect() ?? null) : null
 
       // Use coalesced events for smoother high-frequency input (pen tablets 200Hz+)
       const events = e.nativeEvent.getCoalescedEvents?.() ?? [e.nativeEvent]
@@ -274,13 +279,25 @@ export function useDrawing({
       // Local mutable state — updated on page transitions, committed to refs after the loop
       let ctx = activeCtxRef.current
       let canvas = activeCanvasRef.current
-      let rect = activeRectRef.current!
+      let rect = currentRect
       let activeSide = (activeTargetRef.current as { side: 'left' | 'right' }).side
-
-      applyToolToCtx(ctx)
 
       for (const ce of events) {
         const currScreen = { x: ce.clientX, y: ce.clientY }
+
+        // ── Fast path: pointer is within the active canvas, no cross-page check ──
+        if (!mightCross) {
+          const raw = toCanvasCoords(ce.clientX, ce.clientY, rect, canvas)
+          const pt = stabilizerRef.current ? stabilizerRef.current.process(raw.x, raw.y) : raw
+          ctx.beginPath()
+          ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y)
+          ctx.lineTo(pt.x, pt.y)
+          ctx.stroke()
+          lastPointRef.current = pt
+          lastScreenPosRef.current = currScreen
+          continue
+        }
+
         const ceTarget = getDrawTarget(ce.clientX, ce.clientY, leftRect, rightRect)
 
         if (ceTarget && ceTarget.kind === 'page' && ceTarget.side !== activeSide) {
@@ -288,10 +305,7 @@ export function useDrawing({
           const newSide = ceTarget.side
           const newCanvas = newSide === 'left' ? leftCanvasRef.current : rightCanvasRef.current
           const newRect   = newSide === 'left' ? leftRect : rightRect
-          if (!newCanvas || !newRect) {
-            lastScreenPosRef.current = currScreen
-            continue
-          }
+          if (!newCanvas || !newRect) continue
 
           // 1. Draw to the exit edge of the current canvas
           const exitScreen = findRectEntryPoint(lastScreenPosRef.current, currScreen, rect)
@@ -343,13 +357,10 @@ export function useDrawing({
           newCtx.lineTo(pt.x, pt.y)
           newCtx.stroke()
           lastPointRef.current = pt
+          lastScreenPosRef.current = currScreen
 
-        } else if (!ceTarget || ceTarget.kind !== 'page') {
-          // ── In the spine gap between pages — don't draw, just track position ──
-          // (nothing to do — lastScreenPosRef is updated below)
-
-        } else {
-          // ── Same canvas as before — normal drawing ─────────────────────
+        } else if (ceTarget && ceTarget.kind === 'page') {
+          // ── Same canvas as before (pointer came back after mightCross check) ──
           const raw = toCanvasCoords(ce.clientX, ce.clientY, rect, canvas)
           const pt = stabilizerRef.current ? stabilizerRef.current.process(raw.x, raw.y) : raw
           ctx.beginPath()
@@ -357,9 +368,11 @@ export function useDrawing({
           ctx.lineTo(pt.x, pt.y)
           ctx.stroke()
           lastPointRef.current = pt
-        }
+          lastScreenPosRef.current = currScreen
 
-        lastScreenPosRef.current = currScreen
+        }
+        // else: spine gap — don't draw, don't update lastScreenPosRef so that
+        // the next cross-page transition can find the correct exit/entry points.
       }
 
       // Commit local canvas state back to refs for the next move/up event
@@ -368,7 +381,7 @@ export function useDrawing({
       activeRectRef.current = rect
       activeTargetRef.current = { kind: 'page', side: activeSide }
     },
-    [applyToolToCtx, leftCanvasRef, rightCanvasRef, onBeforeStroke, tool, stabilizationStrength]
+    [applyToolToCtx, leftCanvasRef, rightCanvasRef, onBeforeStroke, tool, stabilizationStrength] // applyToolToCtx needed for cross-page newCtx
   )
 
   const handlePointerUp = useCallback(
