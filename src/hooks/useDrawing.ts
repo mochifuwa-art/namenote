@@ -154,6 +154,10 @@ export function useDrawing({
   const activeRectRef = useRef<DOMRect | null>(null)
   const activeCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const stabilizerRef = useRef<StringStabilizer | null>(null)
+  // True when the pointer has left all page canvases during an active stroke.
+  // Used to clip the stroke at the exit edge and resume at the re-entry edge
+  // (instead of connecting exit→entry with a straight line).
+  const wasOutsideRef = useRef(false)
 
   const applyToolToCtx = useCallback(
     (ctx: CanvasRenderingContext2D) => {
@@ -201,6 +205,7 @@ export function useDrawing({
 
     isDrawingRef.current = true
     pendingPointerRef.current = false
+    wasOutsideRef.current = false
     lastPointRef.current = coords
     lastScreenPosRef.current = { x: clientX, y: clientY }
     visitedSidesRef.current = new Set([target.side])
@@ -265,13 +270,14 @@ export function useDrawing({
       if (!isDrawingRef.current || !activeCtxRef.current || !activeCanvasRef.current) return
 
       const currentRect = activeRectRef.current!
-      // Avoid getBoundingClientRect() reflows on every event — only fetch the other
-      // canvas rect when the pointer is near/past the active canvas boundary.
+      // Avoid getBoundingClientRect() reflows on every event — only fetch canvas
+      // rects when the pointer may have left the active canvas boundary.
       const mightCross =
         e.clientX < currentRect.left || e.clientX > currentRect.right ||
         e.clientY < currentRect.top  || e.clientY > currentRect.bottom
-      const leftRect  = mightCross ? (leftCanvasRef.current?.getBoundingClientRect()  ?? null) : null
-      const rightRect = mightCross ? (rightCanvasRef.current?.getBoundingClientRect() ?? null) : null
+      const needSlowPath = mightCross || wasOutsideRef.current
+      const leftRect  = needSlowPath ? (leftCanvasRef.current?.getBoundingClientRect()  ?? null) : null
+      const rightRect = needSlowPath ? (rightCanvasRef.current?.getBoundingClientRect() ?? null) : null
 
       // Use coalesced events for smoother high-frequency input (pen tablets 200Hz+)
       const events = e.nativeEvent.getCoalescedEvents?.() ?? [e.nativeEvent]
@@ -285,8 +291,8 @@ export function useDrawing({
       for (const ce of events) {
         const currScreen = { x: ce.clientX, y: ce.clientY }
 
-        // ── Fast path: pointer is within the active canvas, no cross-page check ──
-        if (!mightCross) {
+        // ── Fast path: pointer is within the active canvas and wasn't outside ──
+        if (!needSlowPath) {
           const raw = toCanvasCoords(ce.clientX, ce.clientY, rect, canvas)
           const pt = stabilizerRef.current ? stabilizerRef.current.process(raw.x, raw.y) : raw
           ctx.beginPath()
@@ -300,41 +306,63 @@ export function useDrawing({
 
         const ceTarget = getDrawTarget(ce.clientX, ce.clientY, leftRect, rightRect)
 
-        if (ceTarget && ceTarget.kind === 'page' && ceTarget.side !== activeSide) {
+        if (!ceTarget || ceTarget.kind !== 'page') {
+          // ── Outside all pages (spine gap, beyond notebook edge, etc.) ──
+          if (!wasOutsideRef.current) {
+            // Just left the active canvas — draw to the exit edge
+            const exitScreen = findRectEntryPoint(lastScreenPosRef.current, currScreen, rect)
+            const exitCoords = toCanvasCoords(exitScreen.x, exitScreen.y, rect, canvas)
+            const exitPt = stabilizerRef.current
+              ? stabilizerRef.current.process(exitCoords.x, exitCoords.y)
+              : exitCoords
+            ctx.beginPath()
+            ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y)
+            ctx.lineTo(exitPt.x, exitPt.y)
+            ctx.stroke()
+            lastPointRef.current = exitPt
+            wasOutsideRef.current = true
+          }
+          // Track position while outside so re-entry/cross-page can compute the edge intersection
+          lastScreenPosRef.current = currScreen
+
+        } else if (ceTarget.side !== activeSide) {
           // ── Cross-page transition ──────────────────────────────────────
           const newSide = ceTarget.side
           const newCanvas = newSide === 'left' ? leftCanvasRef.current : rightCanvasRef.current
           const newRect   = newSide === 'left' ? leftRect : rightRect
           if (!newCanvas || !newRect) continue
 
-          // 1. Draw to the exit edge of the current canvas
-          const exitScreen = findRectEntryPoint(lastScreenPosRef.current, currScreen, rect)
-          const exitCoords = toCanvasCoords(exitScreen.x, exitScreen.y, rect, canvas)
-          const exitPt = stabilizerRef.current
-            ? stabilizerRef.current.process(exitCoords.x, exitCoords.y)
-            : exitCoords
-          ctx.beginPath()
-          ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y)
-          ctx.lineTo(exitPt.x, exitPt.y)
-          ctx.stroke()
+          if (!wasOutsideRef.current) {
+            // Direct cross-page (no gap in between) — draw to exit edge of current canvas
+            const exitScreen = findRectEntryPoint(lastScreenPosRef.current, currScreen, rect)
+            const exitCoords = toCanvasCoords(exitScreen.x, exitScreen.y, rect, canvas)
+            const exitPt = stabilizerRef.current
+              ? stabilizerRef.current.process(exitCoords.x, exitCoords.y)
+              : exitCoords
+            ctx.beginPath()
+            ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y)
+            ctx.lineTo(exitPt.x, exitPt.y)
+            ctx.stroke()
+          }
+          // else: exit edge was already drawn when the pointer first left the canvas
 
-          // 2. Save history for the new canvas before first mark (once per stroke)
+          // Save history for the new canvas before first mark (once per stroke)
           if (!visitedSidesRef.current.has(newSide)) {
             onBeforeStroke?.({ kind: 'page', side: newSide })
             visitedSidesRef.current.add(newSide)
           }
 
-          // 3. Find the entry point on the new canvas
+          // Find the entry point on the new canvas
           const entryScreen = findRectEntryPoint(lastScreenPosRef.current, currScreen, newRect)
           const entryCoords = toCanvasCoords(entryScreen.x, entryScreen.y, newRect, newCanvas)
 
-          // 4. Reset stabilizer anchored at the entry point (canvas coords changed)
+          // Reset stabilizer anchored at the entry point (canvas coords changed)
           const strLen = strengthToStringLength(stabilizationStrength)
           stabilizerRef.current = strLen > 0
             ? new StringStabilizer(entryCoords.x, entryCoords.y, strLen)
             : null
 
-          // 5. Switch active canvas and draw initial dot at entry
+          // Switch active canvas and draw initial dot at entry
           const newCtx = newCanvas.getContext('2d')!
           applyToolToCtx(newCtx)
           newCtx.beginPath()
@@ -349,7 +377,7 @@ export function useDrawing({
           activeSide = newSide
           lastPointRef.current = entryCoords
 
-          // 6. Continue drawing to the current event position
+          // Continue drawing to the current event position
           const raw = toCanvasCoords(ce.clientX, ce.clientY, newRect, newCanvas)
           const pt = stabilizerRef.current ? stabilizerRef.current.process(raw.x, raw.y) : raw
           newCtx.beginPath()
@@ -358,9 +386,24 @@ export function useDrawing({
           newCtx.stroke()
           lastPointRef.current = pt
           lastScreenPosRef.current = currScreen
+          wasOutsideRef.current = false
 
-        } else if (ceTarget && ceTarget.kind === 'page') {
-          // ── Same canvas as before (pointer came back after mightCross check) ──
+        } else {
+          // ── Same canvas ────────────────────────────────────────────────
+          if (wasOutsideRef.current) {
+            // Re-entering after going outside — find the re-entry edge point
+            // and jump there instead of drawing a line from exit to entry
+            const entryScreen = findRectEntryPoint(lastScreenPosRef.current, currScreen, rect)
+            const entryCoords = toCanvasCoords(entryScreen.x, entryScreen.y, rect, canvas)
+            // Reset stabilizer at re-entry so it doesn't pull toward the old exit position
+            const strLen = strengthToStringLength(stabilizationStrength)
+            stabilizerRef.current = strLen > 0
+              ? new StringStabilizer(entryCoords.x, entryCoords.y, strLen)
+              : null
+            lastPointRef.current = entryCoords  // jump — no line drawn between exit and entry
+            wasOutsideRef.current = false
+          }
+
           const raw = toCanvasCoords(ce.clientX, ce.clientY, rect, canvas)
           const pt = stabilizerRef.current ? stabilizerRef.current.process(raw.x, raw.y) : raw
           ctx.beginPath()
@@ -369,10 +412,7 @@ export function useDrawing({
           ctx.stroke()
           lastPointRef.current = pt
           lastScreenPosRef.current = currScreen
-
         }
-        // else: spine gap — don't draw, don't update lastScreenPosRef so that
-        // the next cross-page transition can find the correct exit/entry points.
       }
 
       // Commit local canvas state back to refs for the next move/up event
@@ -390,7 +430,8 @@ export function useDrawing({
       if (!isDrawingRef.current) return
 
       // Snap to exact pointer position so endpoint is accurate
-      if (stabilizerRef.current && activeCtxRef.current && activeRectRef.current && activeCanvasRef.current) {
+      // (skip if pointer is outside the canvas — stroke already clipped at exit edge)
+      if (!wasOutsideRef.current && stabilizerRef.current && activeCtxRef.current && activeRectRef.current && activeCanvasRef.current) {
         const raw = toCanvasCoords(e.clientX, e.clientY, activeRectRef.current, activeCanvasRef.current)
         const final = stabilizerRef.current.finish(raw.x, raw.y)
         const ctx = activeCtxRef.current
@@ -403,6 +444,7 @@ export function useDrawing({
       stabilizerRef.current = null
 
       isDrawingRef.current = false
+      wasOutsideRef.current = false
       if (activeTargetRef.current) onStrokeEnd(activeTargetRef.current)
       activeCtxRef.current = null
       activeTargetRef.current = null
