@@ -144,6 +144,11 @@ export function useDrawing({
   // crosses the boundary between two pointermove samples (fast movement).
   const lastOutsidePosRef = useRef<{ x: number; y: number } | null>(null)
   const lastPointRef = useRef({ x: 0, y: 0 })
+  // Last known screen-space position of the draw cursor (updated each coalesced event).
+  // Used to find the exact exit/entry edge point when the stroke crosses between pages.
+  const lastScreenPosRef = useRef({ x: 0, y: 0 })
+  // Which page sides have been drawn on in the current stroke (for cross-page history).
+  const visitedSidesRef = useRef<Set<'left' | 'right'>>(new Set())
   const activeTargetRef = useRef<DrawTarget | null>(null)
   const activeCtxRef = useRef<CanvasRenderingContext2D | null>(null)
   const activeRectRef = useRef<DOMRect | null>(null)
@@ -197,6 +202,8 @@ export function useDrawing({
     isDrawingRef.current = true
     pendingPointerRef.current = false
     lastPointRef.current = coords
+    lastScreenPosRef.current = { x: clientX, y: clientY }
+    visitedSidesRef.current = new Set([target.side])
     activeTargetRef.current = target
     activeCtxRef.current = ctx
     activeRectRef.current = rect
@@ -257,27 +264,111 @@ export function useDrawing({
 
       if (!isDrawingRef.current || !activeCtxRef.current || !activeCanvasRef.current) return
 
-      const ctx = activeCtxRef.current
-      const canvas = activeCanvasRef.current
-      const rect = activeRectRef.current!
+      // Compute both rects up front so cross-page transitions can find the other canvas
+      const leftRect = leftCanvasRef.current?.getBoundingClientRect() ?? null
+      const rightRect = rightCanvasRef.current?.getBoundingClientRect() ?? null
 
       // Use coalesced events for smoother high-frequency input (pen tablets 200Hz+)
       const events = e.nativeEvent.getCoalescedEvents?.() ?? [e.nativeEvent]
 
+      // Local mutable state — updated on page transitions, committed to refs after the loop
+      let ctx = activeCtxRef.current
+      let canvas = activeCanvasRef.current
+      let rect = activeRectRef.current!
+      let activeSide = (activeTargetRef.current as { side: 'left' | 'right' }).side
+
       applyToolToCtx(ctx)
 
       for (const ce of events) {
-        const raw = toCanvasCoords(ce.clientX, ce.clientY, rect, canvas)
-        const pt = stabilizerRef.current ? stabilizerRef.current.process(raw.x, raw.y) : raw
+        const currScreen = { x: ce.clientX, y: ce.clientY }
+        const ceTarget = getDrawTarget(ce.clientX, ce.clientY, leftRect, rightRect)
 
-        ctx.beginPath()
-        ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y)
-        ctx.lineTo(pt.x, pt.y)
-        ctx.stroke()
-        lastPointRef.current = pt
+        if (ceTarget && ceTarget.kind === 'page' && ceTarget.side !== activeSide) {
+          // ── Cross-page transition ──────────────────────────────────────
+          const newSide = ceTarget.side
+          const newCanvas = newSide === 'left' ? leftCanvasRef.current : rightCanvasRef.current
+          const newRect   = newSide === 'left' ? leftRect : rightRect
+          if (!newCanvas || !newRect) {
+            lastScreenPosRef.current = currScreen
+            continue
+          }
+
+          // 1. Draw to the exit edge of the current canvas
+          const exitScreen = findRectEntryPoint(lastScreenPosRef.current, currScreen, rect)
+          const exitCoords = toCanvasCoords(exitScreen.x, exitScreen.y, rect, canvas)
+          const exitPt = stabilizerRef.current
+            ? stabilizerRef.current.process(exitCoords.x, exitCoords.y)
+            : exitCoords
+          ctx.beginPath()
+          ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y)
+          ctx.lineTo(exitPt.x, exitPt.y)
+          ctx.stroke()
+
+          // 2. Save history for the new canvas before first mark (once per stroke)
+          if (!visitedSidesRef.current.has(newSide)) {
+            onBeforeStroke?.({ kind: 'page', side: newSide })
+            visitedSidesRef.current.add(newSide)
+          }
+
+          // 3. Find the entry point on the new canvas
+          const entryScreen = findRectEntryPoint(lastScreenPosRef.current, currScreen, newRect)
+          const entryCoords = toCanvasCoords(entryScreen.x, entryScreen.y, newRect, newCanvas)
+
+          // 4. Reset stabilizer anchored at the entry point (canvas coords changed)
+          const strLen = strengthToStringLength(stabilizationStrength)
+          stabilizerRef.current = strLen > 0
+            ? new StringStabilizer(entryCoords.x, entryCoords.y, strLen)
+            : null
+
+          // 5. Switch active canvas and draw initial dot at entry
+          const newCtx = newCanvas.getContext('2d')!
+          applyToolToCtx(newCtx)
+          newCtx.beginPath()
+          newCtx.arc(entryCoords.x, entryCoords.y, tool.size / 2, 0, Math.PI * 2)
+          newCtx.fillStyle = tool.type === 'eraser' ? 'rgba(0,0,0,1)' : tool.color
+          newCtx.globalCompositeOperation = tool.type === 'eraser' ? 'destination-out' : 'source-over'
+          newCtx.fill()
+
+          ctx = newCtx
+          canvas = newCanvas
+          rect = newRect
+          activeSide = newSide
+          lastPointRef.current = entryCoords
+
+          // 6. Continue drawing to the current event position
+          const raw = toCanvasCoords(ce.clientX, ce.clientY, newRect, newCanvas)
+          const pt = stabilizerRef.current ? stabilizerRef.current.process(raw.x, raw.y) : raw
+          newCtx.beginPath()
+          newCtx.moveTo(lastPointRef.current.x, lastPointRef.current.y)
+          newCtx.lineTo(pt.x, pt.y)
+          newCtx.stroke()
+          lastPointRef.current = pt
+
+        } else if (!ceTarget || ceTarget.kind !== 'page') {
+          // ── In the spine gap between pages — don't draw, just track position ──
+          // (nothing to do — lastScreenPosRef is updated below)
+
+        } else {
+          // ── Same canvas as before — normal drawing ─────────────────────
+          const raw = toCanvasCoords(ce.clientX, ce.clientY, rect, canvas)
+          const pt = stabilizerRef.current ? stabilizerRef.current.process(raw.x, raw.y) : raw
+          ctx.beginPath()
+          ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y)
+          ctx.lineTo(pt.x, pt.y)
+          ctx.stroke()
+          lastPointRef.current = pt
+        }
+
+        lastScreenPosRef.current = currScreen
       }
+
+      // Commit local canvas state back to refs for the next move/up event
+      activeCtxRef.current = ctx
+      activeCanvasRef.current = canvas
+      activeRectRef.current = rect
+      activeTargetRef.current = { kind: 'page', side: activeSide }
     },
-    [applyToolToCtx]
+    [applyToolToCtx, leftCanvasRef, rightCanvasRef, onBeforeStroke, tool, stabilizationStrength]
   )
 
   const handlePointerUp = useCallback(
