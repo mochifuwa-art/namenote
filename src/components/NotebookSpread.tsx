@@ -20,7 +20,8 @@ interface NotebookSpreadProps {
   onAddText: (obj: TextObject) => void
   onUpdateText: (id: string, updates: Partial<Pick<TextObject, 'x' | 'y' | 'text'>>) => void
   onEditRequest: (id: string, screenX: number, screenY: number) => void
-  onBeginCrossAreaDrag?: (obj: TextObject, pointerId: number, clientX: number, clientY: number) => void
+  onBeginCrossAreaDrag?: (obj: TextObject, pointerId: number, clientX: number, clientY: number, grabOffsetX: number, grabOffsetY: number) => void
+  bindingDirection: 'right' | 'left'
 }
 
 const NotebookSpread = forwardRef<HTMLDivElement, NotebookSpreadProps>(
@@ -41,12 +42,15 @@ const NotebookSpread = forwardRef<HTMLDivElement, NotebookSpreadProps>(
       onUpdateText,
       onEditRequest,
       onBeginCrossAreaDrag,
+      bindingDirection,
     },
     ref,
   ) => {
-    // 右綴じ: 右ページが奇数ページ（先に読む）、左ページが偶数ページ
-    const rightPageNum = currentSpread * 2 + 1
-    const leftPageNum = currentSpread * 2 + 2
+    const firstPageNum  = currentSpread * 2 + 1  // 読む順で先のページ番号
+    const secondPageNum = currentSpread * 2 + 2  // 読む順で後のページ番号
+    // 右綴じ: 右=p.1（奇数）、左=p.2（偶数）  左綴じ: 左=p.1（奇数）、右=p.2（偶数）
+    const rightPageNum = bindingDirection === 'right' ? firstPageNum  : secondPageNum
+    const leftPageNum  = bindingDirection === 'right' ? secondPageNum : firstPageNum
 
     const leftTexts = textObjects.filter(
       o => o.side === 'left' && o.spread === currentSpread,
@@ -60,7 +64,7 @@ const NotebookSpread = forwardRef<HTMLDivElement, NotebookSpreadProps>(
         ref={ref}
         className={`notebook-spread notebook-spread--mobile-${mobileSide === 'L' ? 'left' : 'right'}`}
       >
-        {/* 左ページ（偶数・後に読む） */}
+        {/* 左ページ */}
         <div className="notebook-page notebook-page-left">
           <div className="notebook-lines" />
           <PageCanvas ref={leftCanvasRef} side="left" />
@@ -81,9 +85,11 @@ const NotebookSpread = forwardRef<HTMLDivElement, NotebookSpreadProps>(
             onBeginCrossAreaDrag={onBeginCrossAreaDrag}
           />
           <span className="notebook-page-num notebook-page-num-left">{leftPageNum}</span>
+          {/* 左綴じ: 製本シャドウは左ページの左端 */}
+          {bindingDirection === 'left' && <div className="notebook-binding-edge notebook-binding-edge--left" />}
         </div>
         <div className="notebook-spine" />
-        {/* 右ページ（奇数・先に読む）+ 製本側シャドウ */}
+        {/* 右ページ */}
         <div className="notebook-page notebook-page-right">
           <div className="notebook-lines" />
           <PageCanvas ref={rightCanvasRef} side="right" />
@@ -104,10 +110,11 @@ const NotebookSpread = forwardRef<HTMLDivElement, NotebookSpreadProps>(
             onBeginCrossAreaDrag={onBeginCrossAreaDrag}
           />
           <span className="notebook-page-num notebook-page-num-right">{rightPageNum}</span>
-          <div className="notebook-binding-edge" />
+          {/* 右綴じ: 製本シャドウは右ページの右端 */}
+          {bindingDirection === 'right' && <div className="notebook-binding-edge" />}
         </div>
         <div className="notebook-page-indicator">
-          {rightPageNum} · {leftPageNum} / {totalSpreads * 2} p
+          {firstPageNum} · {secondPageNum} / {totalSpreads * 2} p
         </div>
       </div>
     )

@@ -113,6 +113,24 @@
   );
 }
 
+/* ── 左端の製本シャドウ（左綴じの視覚的手がかり）────────────── */
+.notebook-binding-edge--left {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: auto;
+  width: 20px;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+  background: linear-gradient(
+    to right,
+    rgba(0, 0, 0, 0.10) 0%,
+    rgba(0, 0, 0, 0.04) 40%,
+    transparent 100%
+  );
+}
+
 /* ── Page number indicator ────────────────────────────────────── */
 .notebook-page-indicator {
   position: absolute;
