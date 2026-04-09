@@ -529,6 +529,16 @@ export default function App() {
       tapStartPosRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
       tapMaxFingersRef.current = Math.max(tapMaxFingersRef.current, newSize)
 
+      if (newSize === 2 || newSize === 3) {
+        // Re-evaluate tap eligibility from the moment multi-finger contact is established.
+        // Any single-finger pan movement before this point should not disqualify the tap.
+        tapMovedRef.current = false
+        for (const [pid, pos] of activePointersRef.current.entries()) {
+          tapStartPosRef.current.set(pid, pos)
+        }
+        tapStartTimeRef.current = Date.now()
+      }
+
       if (newSize === 2) {
         // Cancel any in-progress drawing or single-finger pan before entering gesture mode
         cancelStrokeRef.current()
@@ -546,16 +556,17 @@ export default function App() {
       if (!activePointersRef.current.has(e.pointerId)) return  // not a tracked touch
       activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
 
-      // Detect finger movement — if any finger moves more than 12px it's not a tap
+      // Detect finger movement — if any finger moves more than 20px it's not a tap.
+      // 20px (vs 12px) gives more tolerance for Android touch sensor noise.
       if (!tapMovedRef.current) {
         const start = tapStartPosRef.current.get(e.pointerId)
         if (start) {
           const dx = e.clientX - start.x, dy = e.clientY - start.y
-          if (dx * dx + dy * dy > 144) tapMovedRef.current = true  // 12px threshold
+          if (dx * dx + dy * dy > 400) tapMovedRef.current = true  // 20px threshold
         }
       }
 
-      if (activePointersRef.current.size === 2 && !tapMovedRef.current) return  // wait — might still be a tap
+      if (activePointersRef.current.size >= 2 && !tapMovedRef.current) return  // wait — might still be a tap
 
       if (activePointersRef.current.size === 2) {
         const pts = Array.from(activePointersRef.current.values())
@@ -594,7 +605,7 @@ export default function App() {
       // When all fingers lift, evaluate whether this was a 2/3-finger tap
       if (activePointersRef.current.size === 0) {
         const elapsed = Date.now() - tapStartTimeRef.current
-        if (!tapMovedRef.current && elapsed < 300) {
+        if (!tapMovedRef.current && elapsed < 500) {
           if (tapMaxFingersRef.current === 2) {
             undoActionRef.current()
           } else if (tapMaxFingersRef.current === 3) {
