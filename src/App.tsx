@@ -68,7 +68,7 @@ export default function App() {
   const [writingMode, setWritingMode] = useState<TextWritingMode>('horizontal-tb')
   const [textFontSize, setTextFontSize] = useState(18)
   const [textEditorState, setTextEditorState] = useState<{ id: string; screenX: number; screenY: number } | null>(null)
-  const [crossAreaDrag, setCrossAreaDrag] = useState<{ obj: TextObject; clientX: number; clientY: number } | null>(null)
+  const [crossAreaDrag, setCrossAreaDrag] = useState<{ obj: TextObject; clientX: number; clientY: number; grabOffsetX: number; grabOffsetY: number } | null>(null)
 
   // Stable ref to always-current textObjects for history callbacks
   const textObjectsRef = useRef<TextObject[]>([])
@@ -429,8 +429,8 @@ export default function App() {
 
   // ── Cross-area text drag ──────────────────────────────────────
   const handleBeginCrossAreaDrag = useCallback(
-    (obj: TextObject, pointerId: number, clientX: number, clientY: number) => {
-      setCrossAreaDrag({ obj, clientX, clientY })
+    (obj: TextObject, pointerId: number, clientX: number, clientY: number, grabOffsetX: number, grabOffsetY: number) => {
+      setCrossAreaDrag({ obj, clientX, clientY, grabOffsetX, grabOffsetY })
 
       const onMove = (e: PointerEvent) => {
         if (e.pointerId !== pointerId) return
@@ -456,19 +456,24 @@ export default function App() {
           e.clientX >= r.left && e.clientX <= r.right &&
           e.clientY >= r.top  && e.clientY <= r.bottom
 
+        // Adjust drop position by grab offset so the text lands where it was grabbed,
+        // not at the pointer tip (which would be the text box's top-left corner).
+        const dropX = e.clientX - grabOffsetX
+        const dropY = e.clientY - grabOffsetY
+
         if (memoRect && inRect(memoRect)) {
           newSide = 'memo'
           newSpread = 0
-          newX = (e.clientX - memoRect.left) * (260 / memoRect.width)
-          newY = (e.clientY - memoRect.top)  * (4000 / memoRect.height)
+          newX = (dropX - memoRect.left) * (260 / memoRect.width)
+          newY = (dropY - memoRect.top)  * (4000 / memoRect.height)
         } else if (leftRect && inRect(leftRect)) {
           newSide = 'left'
-          newX = (e.clientX - leftRect.left) * (PAGE_WIDTH / leftRect.width)
-          newY = (e.clientY - leftRect.top)  * (PAGE_HEIGHT / leftRect.height)
+          newX = (dropX - leftRect.left) * (PAGE_WIDTH / leftRect.width)
+          newY = (dropY - leftRect.top)  * (PAGE_HEIGHT / leftRect.height)
         } else if (rightRect && inRect(rightRect)) {
           newSide = 'right'
-          newX = (e.clientX - rightRect.left) * (PAGE_WIDTH / rightRect.width)
-          newY = (e.clientY - rightRect.top)  * (PAGE_HEIGHT / rightRect.height)
+          newX = (dropX - rightRect.left) * (PAGE_WIDTH / rightRect.width)
+          newY = (dropY - rightRect.top)  * (PAGE_HEIGHT / rightRect.height)
         } else {
           return  // dropped outside — keep original position
         }
@@ -988,8 +993,8 @@ export default function App() {
         <div
           style={{
             position: 'fixed',
-            left: crossAreaDrag.clientX + 4,
-            top: crossAreaDrag.clientY + 4,
+            left: crossAreaDrag.clientX - crossAreaDrag.grabOffsetX,
+            top: crossAreaDrag.clientY - crossAreaDrag.grabOffsetY,
             zIndex: 3000,
             pointerEvents: 'none',
             writingMode: crossAreaDrag.obj.writingMode as 'horizontal-tb' | 'vertical-rl',

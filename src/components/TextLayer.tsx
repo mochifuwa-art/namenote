@@ -19,7 +19,7 @@ interface TextLayerProps {
   /** Called when user taps on empty area or existing text object — opens the portal editor */
   onEditRequest: (id: string, screenX: number, screenY: number) => void
   /** Called when a drag gesture leaves this layer's bounds — App takes over the drag */
-  onBeginCrossAreaDrag?: (obj: TextObject, pointerId: number, clientX: number, clientY: number) => void
+  onBeginCrossAreaDrag?: (obj: TextObject, pointerId: number, clientX: number, clientY: number, grabOffsetX: number, grabOffsetY: number) => void
 }
 
 export default function TextLayer({
@@ -68,7 +68,7 @@ export default function TextLayer({
   return (
     <div
       ref={layerRef}
-      className={`text-layer${isActive ? ' text-layer--active' : ''}`}
+      className={`text-layer${isActive ? ' text-layer--active' : ''}${draggingId ? ' text-layer--dragging' : ''}`}
       onPointerDown={handleLayerPointerDown}
     >
       {objects.map(obj => (
@@ -96,7 +96,7 @@ interface TextItemProps {
   hidden?: boolean
   onMove: (x: number, y: number) => void
   onEditRequest: (screenX: number, screenY: number) => void
-  onBeginCrossAreaDrag?: (obj: TextObject, pointerId: number, clientX: number, clientY: number) => void
+  onBeginCrossAreaDrag?: (obj: TextObject, pointerId: number, clientX: number, clientY: number, grabOffsetX: number, grabOffsetY: number) => void
 }
 
 function TextItem({ obj, isActive, canvasWidth, hidden, onMove, onEditRequest, onBeginCrossAreaDrag }: TextItemProps) {
@@ -106,6 +106,8 @@ function TextItem({ obj, isActive, canvasWidth, hidden, onMove, onEditRequest, o
     startPy: number
     origX: number
     origY: number
+    grabOffsetX: number  // pointer offset from text box top-left, in screen px
+    grabOffsetY: number
     scale: number
     moved: boolean
     pointerId: number
@@ -124,6 +126,8 @@ function TextItem({ obj, isActive, canvasWidth, hidden, onMove, onEditRequest, o
       startPy: e.clientY,
       origX: obj.x,
       origY: obj.y,
+      grabOffsetX: e.clientX - (rect.left + obj.x * scale),
+      grabOffsetY: e.clientY - (rect.top  + obj.y * scale),
       scale,
       moved: false,
       pointerId: e.pointerId,
@@ -145,10 +149,10 @@ function TextItem({ obj, isActive, canvasWidth, hidden, onMove, onEditRequest, o
           e.clientX < layerRect.left - 10 || e.clientX > layerRect.right + 10 ||
           e.clientY < layerRect.top - 10 || e.clientY > layerRect.bottom + 10
         if (outside) {
-          const pid = dragRef.current.pointerId
+          const { pointerId: pid, grabOffsetX, grabOffsetY } = dragRef.current
           dragRef.current = null
           ;(e.currentTarget as HTMLElement).releasePointerCapture(pid)
-          onBeginCrossAreaDrag(obj, pid, e.clientX, e.clientY)
+          onBeginCrossAreaDrag(obj, pid, e.clientX, e.clientY, grabOffsetX, grabOffsetY)
           return
         }
       }
