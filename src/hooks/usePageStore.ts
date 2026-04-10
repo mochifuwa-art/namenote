@@ -42,7 +42,8 @@ function migrateOpaqueBackground(ctx: CanvasRenderingContext2D, w: number, h: nu
 }
 
 function loadCanvasFromData(canvas: HTMLCanvasElement, data: string | null): () => void {
-  const ctx = canvas.getContext('2d')
+  // desynchronized: true reduces compositor latency for drawing (must be set on first getContext call)
+  const ctx = canvas.getContext('2d', { desynchronized: true })
   if (!ctx) return () => {}
   ctx.clearRect(0, 0, canvas.width, canvas.height)
   if (!data) return () => {}

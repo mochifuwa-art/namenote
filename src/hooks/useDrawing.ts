@@ -4,6 +4,11 @@ import type { DrawingTool, DrawTarget } from '../types'
 const PAGE_WIDTH = 560
 const PAGE_HEIGHT = 800
 
+// Normalize pointer pressure: pen → [0.1, 1.0], mouse/touch → 1.0
+function getPressure(e: { pointerType: string; pressure: number }): number {
+  return e.pointerType === 'pen' ? Math.max(0.1, e.pressure) : 1.0
+}
+
 function getDrawTarget(
   clientX: number,
   clientY: number,
@@ -159,10 +164,10 @@ export function useDrawing({
   const wasOutsideRef = useRef(false)
 
   const applyToolToCtx = useCallback(
-    (ctx: CanvasRenderingContext2D) => {
+    (ctx: CanvasRenderingContext2D, pressure = 1.0) => {
       ctx.globalCompositeOperation = tool.type === 'eraser' ? 'destination-out' : 'source-over'
       ctx.strokeStyle = tool.color
-      ctx.lineWidth = tool.size
+      ctx.lineWidth = tool.size * pressure
       ctx.lineCap = 'round'
       ctx.lineJoin = 'round'
     },
@@ -179,6 +184,7 @@ export function useDrawing({
     target: DrawTarget,
     leftRect: DOMRect | null,
     rightRect: DOMRect | null,
+    pressure = 1.0,
   ) => {
     if (target.kind !== 'page') return
     const canvas = target.side === 'left' ? leftCanvasRef.current : rightCanvasRef.current
@@ -187,14 +193,15 @@ export function useDrawing({
 
     onBeforeStroke?.(target)
 
-    const ctx = canvas.getContext('2d')!
-    applyToolToCtx(ctx)
+    const ctx = canvas.getContext('2d', { desynchronized: true })
+    if (!ctx) return
+    applyToolToCtx(ctx, pressure)
 
     const coords = toCanvasCoords(clientX, clientY, rect, canvas)
 
-    // Draw initial dot at entry point
+    // Draw initial dot at entry point, scaled by pressure
     ctx.beginPath()
-    ctx.arc(coords.x, coords.y, tool.size / 2, 0, Math.PI * 2)
+    ctx.arc(coords.x, coords.y, (tool.size / 2) * pressure, 0, Math.PI * 2)
     ctx.fillStyle = tool.type === 'eraser' ? 'rgba(0,0,0,1)' : tool.color
     ctx.globalCompositeOperation = tool.type === 'eraser' ? 'destination-out' : 'source-over'
     ctx.fill()
@@ -234,7 +241,7 @@ export function useDrawing({
         return
       }
 
-      startStroke(e.clientX, e.clientY, e.pointerId, target, leftRect, rightRect)
+      startStroke(e.clientX, e.clientY, e.pointerId, target, leftRect, rightRect, getPressure(e))
     },
     [enabled, startStroke, leftCanvasRef, rightCanvasRef, overlayRef]
   )
@@ -257,7 +264,7 @@ export function useDrawing({
             ? findRectEntryPoint(lastOutsidePosRef.current, curr, rect)
             : curr
           lastOutsidePosRef.current = null
-          startStroke(entry.x, entry.y, e.pointerId, target, leftRect, rightRect)
+          startStroke(entry.x, entry.y, e.pointerId, target, leftRect, rightRect, getPressure(e))
         } else {
           // Still outside — update the last known outside position for the
           // next sample's entry-point calculation.
@@ -286,6 +293,8 @@ export function useDrawing({
       for (const ce of events) {
         const currScreen = { x: ce.clientX, y: ce.clientY }
         const ceTarget = getDrawTarget(ce.clientX, ce.clientY, leftRect, rightRect)
+        // Per-event pressure update (pen only; mouse/touch keep full width)
+        if (ce.pointerType === 'pen') ctx.lineWidth = tool.size * Math.max(0.1, ce.pressure)
 
         if (ceTarget && ceTarget.kind === 'page' && ceTarget.side !== activeSide) {
           // ── Cross-page transition ──────────────────────────────────────
@@ -327,10 +336,12 @@ export function useDrawing({
             : null
 
           // 5. Switch active canvas and draw initial dot at entry
-          const newCtx = newCanvas.getContext('2d')!
-          applyToolToCtx(newCtx)
+          const entryPressure = ce.pointerType === 'pen' ? Math.max(0.1, ce.pressure) : 1.0
+          const newCtx = newCanvas.getContext('2d', { desynchronized: true })
+          if (!newCtx) continue
+          applyToolToCtx(newCtx, entryPressure)
           newCtx.beginPath()
-          newCtx.arc(entryCoords.x, entryCoords.y, tool.size / 2, 0, Math.PI * 2)
+          newCtx.arc(entryCoords.x, entryCoords.y, (tool.size / 2) * entryPressure, 0, Math.PI * 2)
           newCtx.fillStyle = tool.type === 'eraser' ? 'rgba(0,0,0,1)' : tool.color
           newCtx.globalCompositeOperation = tool.type === 'eraser' ? 'destination-out' : 'source-over'
           newCtx.fill()
@@ -390,6 +401,23 @@ export function useDrawing({
         }
 
         lastScreenPosRef.current = currScreen
+      }
+
+      // ── Predicted events: draw 1 event ahead to reduce perceived latency ──
+      // These are NOT run through the stabilizer (would corrupt its state).
+      // The next frame's coalesced events will naturally overdraw them.
+      const predicted = (e.nativeEvent.getPredictedEvents?.() ?? []).slice(0, 1)
+      let predLastPt = lastPointRef.current
+      for (const pe of predicted) {
+        const peTarget = getDrawTarget(pe.clientX, pe.clientY, leftRect, rightRect)
+        if (!peTarget || peTarget.kind !== 'page' || peTarget.side !== activeSide) break
+        if (pe.pointerType === 'pen') ctx.lineWidth = tool.size * Math.max(0.1, pe.pressure)
+        const raw = toCanvasCoords(pe.clientX, pe.clientY, rect, canvas)
+        ctx.beginPath()
+        ctx.moveTo(predLastPt.x, predLastPt.y)
+        ctx.lineTo(raw.x, raw.y)
+        ctx.stroke()
+        predLastPt = raw  // chain predictions; do NOT update lastPointRef
       }
 
       // Commit local canvas state back to refs for the next move/up event

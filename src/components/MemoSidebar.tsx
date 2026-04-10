@@ -99,13 +99,14 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
 
         const canvas = (canvasRef as React.RefObject<HTMLCanvasElement>).current
         if (!canvas) return
-        const ctx = canvas.getContext('2d')
+        const ctx = canvas.getContext('2d', { desynchronized: true })
         if (!ctx) return
         applyTool(ctx)
 
         const pt = getCanvasCoords(e.clientX, e.clientY)
+        const pressure = e.pointerType === 'pen' ? Math.max(0.1, e.pressure) : 1.0
         ctx.beginPath()
-        ctx.arc(pt.x, pt.y, tool.size / 2, 0, Math.PI * 2)
+        ctx.arc(pt.x, pt.y, (tool.size / 2) * pressure, 0, Math.PI * 2)
         ctx.fillStyle =
           tool.type === 'eraser' ? 'rgba(0,0,0,1)' : tool.color
         ctx.globalCompositeOperation =
