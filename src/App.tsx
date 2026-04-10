@@ -256,7 +256,7 @@ export default function App() {
   const goToSpread = useCallback(
     (next: number, side: 'R' | 'L' = 'R') => {
       saveNow()
-      history.clearPageHistory()
+      history.switchSpread(currentSpread, next)
       setCurrentSpread(next)
       setMobileSide(side)
       setNotebookZoom(1)
@@ -265,7 +265,7 @@ export default function App() {
       // mid-navigation, so recompute after the browser has settled.
       requestAnimationFrame(() => computeNotebookScale(sidebarOpen))
     },
-    [saveNow, history, computeNotebookScale, sidebarOpen],
+    [saveNow, history, currentSpread, computeNotebookScale, sidebarOpen],
   )
 
   useEffect(() => {
@@ -706,6 +706,7 @@ export default function App() {
         parseInt((data as Record<string, string>)['namenote_spread_count'] ?? '1', 10) || 1
       setTotalSpreads(loadedCount)
       setCurrentSpread(0)
+      history.clearAllHistory()
       setSaveStatus('saved')
       // Reload text objects from localStorage (updated by loadAllFromProjectData)
       try {
@@ -876,6 +877,7 @@ export default function App() {
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
+        onContextMenu={e => e.preventDefault()}
       />
 
       {/* Toolbar */}
