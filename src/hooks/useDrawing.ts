@@ -40,11 +40,11 @@ function findRectEntryPoint(
 ): { x: number; y: number } {
   const dx = curr.x - prev.x
   const dy = curr.y - prev.y
-  let tMin = Infinity
+  let tMin: number | null = null
 
   const tryEdge = (t: number, coord: number, lo: number, hi: number) => {
     if (t >= 0 && t <= 1 && coord >= lo && coord <= hi) {
-      tMin = Math.min(tMin, t)
+      if (tMin === null || t < tMin) tMin = t
     }
   }
 
@@ -61,7 +61,7 @@ function findRectEntryPoint(
     tryEdge(tB, prev.x + tB * dx, rect.left, rect.right)
   }
 
-  if (tMin === Infinity) return curr
+  if (tMin === null) return curr
   return { x: prev.x + tMin * dx, y: prev.y + tMin * dy }
 }
 

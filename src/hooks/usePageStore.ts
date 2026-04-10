@@ -7,6 +7,16 @@ function pageKey(spreadIndex: number, side: 'L' | 'R') {
   return `namenote_page_${spreadIndex}_${side}`
 }
 
+function trySetItem(key: string, value: string): boolean {
+  try {
+    localStorage.setItem(key, value)
+    return true
+  } catch {
+    // Quota exceeded or other storage error — ignore
+    return false
+  }
+}
+
 function saveCanvas(canvas: HTMLCanvasElement, key: string) {
   try {
     const data = canvas.toDataURL('image/png')
@@ -31,17 +41,21 @@ function migrateOpaqueBackground(ctx: CanvasRenderingContext2D, w: number, h: nu
   ctx.putImageData(imageData, 0, 0)
 }
 
-function loadCanvasFromData(canvas: HTMLCanvasElement, data: string | null) {
-  const ctx = canvas.getContext('2d')!
+function loadCanvasFromData(canvas: HTMLCanvasElement, data: string | null): () => void {
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return () => {}
   ctx.clearRect(0, 0, canvas.width, canvas.height)
-  if (!data) return
+  if (!data) return () => {}
+  let cancelled = false
   const img = new Image()
   img.onload = () => {
+    if (cancelled) return
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     ctx.drawImage(img, 0, 0)
     migrateOpaqueBackground(ctx, canvas.width, canvas.height)
   }
   img.src = data
+  return () => { cancelled = true }
 }
 
 export function usePageStore() {
@@ -53,7 +67,7 @@ export function usePageStore() {
 
   const setSpreadCount = useCallback((n: number) => {
     spreadCountRef.current = n
-    localStorage.setItem(SPREAD_COUNT_KEY, String(n))
+    trySetItem(SPREAD_COUNT_KEY, String(n))
   }, [])
 
   const ensureSpread = useCallback((spreadIndex: number) => {
@@ -111,9 +125,9 @@ export function usePageStore() {
     spreads.splice(to, 0, moved)
     for (let i = 0; i < spreads.length; i++) {
       const s = spreads[i]
-      if (s.L) localStorage.setItem(pageKey(i, 'L'), s.L)
+      if (s.L) trySetItem(pageKey(i, 'L'), s.L)
       else localStorage.removeItem(pageKey(i, 'L'))
-      if (s.R) localStorage.setItem(pageKey(i, 'R'), s.R)
+      if (s.R) trySetItem(pageKey(i, 'R'), s.R)
       else localStorage.removeItem(pageKey(i, 'R'))
     }
   }, [])
@@ -124,9 +138,9 @@ export function usePageStore() {
     for (let i = at; i < count - 1; i++) {
       const L = localStorage.getItem(pageKey(i + 1, 'L'))
       const R = localStorage.getItem(pageKey(i + 1, 'R'))
-      if (L) localStorage.setItem(pageKey(i, 'L'), L)
+      if (L) trySetItem(pageKey(i, 'L'), L)
       else localStorage.removeItem(pageKey(i, 'L'))
-      if (R) localStorage.setItem(pageKey(i, 'R'), R)
+      if (R) trySetItem(pageKey(i, 'R'), R)
       else localStorage.removeItem(pageKey(i, 'R'))
     }
     localStorage.removeItem(pageKey(count - 1, 'L'))
@@ -152,7 +166,7 @@ export function usePageStore() {
       const s = Math.floor(i / 2)
       const side: 'L' | 'R' = i % 2 === 0 ? 'R' : 'L'
       const k = pageKey(s, side)
-      if (pages[i]) localStorage.setItem(k, pages[i]!)
+      if (pages[i]) trySetItem(k, pages[i]!)
       else localStorage.removeItem(k)
     }
   }, [])
@@ -176,7 +190,7 @@ export function usePageStore() {
       const side: 'L' | 'R' = i % 2 === 0 ? 'R' : 'L'
       const k = pageKey(s, side)
       const data = pages[i] ?? null
-      if (data) localStorage.setItem(k, data)
+      if (data) trySetItem(k, data)
       else localStorage.removeItem(k)
     }
     setSpreadCount(newCount)
@@ -202,7 +216,7 @@ export function usePageStore() {
       const s = Math.floor(i / 2)
       const side: 'L' | 'R' = i % 2 === 0 ? 'R' : 'L'
       const k = pageKey(s, side)
-      if (pages[i]) localStorage.setItem(k, pages[i]!)
+      if (pages[i]) trySetItem(k, pages[i]!)
       else localStorage.removeItem(k)
     }
     setSpreadCount(newCount)
@@ -214,9 +228,9 @@ export function usePageStore() {
     for (let i = count - 1; i >= at; i--) {
       const L = localStorage.getItem(pageKey(i, 'L'))
       const R = localStorage.getItem(pageKey(i, 'R'))
-      if (L) localStorage.setItem(pageKey(i + 1, 'L'), L)
+      if (L) trySetItem(pageKey(i + 1, 'L'), L)
       else localStorage.removeItem(pageKey(i + 1, 'L'))
-      if (R) localStorage.setItem(pageKey(i + 1, 'R'), R)
+      if (R) trySetItem(pageKey(i + 1, 'R'), R)
       else localStorage.removeItem(pageKey(i + 1, 'R'))
     }
     localStorage.removeItem(pageKey(at, 'L'))
@@ -233,7 +247,7 @@ export function usePageStore() {
       currentSpread: number
     ) => {
       Object.entries(projectData).forEach(([key, value]) => {
-        localStorage.setItem(key, value)
+        trySetItem(key, value)
       })
       const count = parseInt(projectData[SPREAD_COUNT_KEY] ?? '1', 10) || 1
       spreadCountRef.current = count

@@ -42,7 +42,8 @@ export function useHistory(
     const key = t.kind === 'memo' ? 'memo' : t.side
     const canvas = getCanvas(key)
     if (!canvas) return
-    const ctx = canvas.getContext('2d')!
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
     const data = ctx.getImageData(0, 0, canvas.width, canvas.height)
     undoStack.current.push({ kind: 'canvas', target: key, data })
     if (undoStack.current.length > MAX_HISTORY) undoStack.current.shift()
@@ -65,7 +66,8 @@ export function useHistory(
     if (entry.kind === 'canvas') {
       const canvas = getCanvas(entry.target)
       if (!canvas) return
-      const ctx = canvas.getContext('2d')!
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
       const current = ctx.getImageData(0, 0, canvas.width, canvas.height)
       redoStack.current.push({ kind: 'canvas', target: entry.target, data: current })
       ctx.putImageData(entry.data, 0, 0)
@@ -83,7 +85,8 @@ export function useHistory(
     if (entry.kind === 'canvas') {
       const canvas = getCanvas(entry.target)
       if (!canvas) return
-      const ctx = canvas.getContext('2d')!
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
       const current = ctx.getImageData(0, 0, canvas.width, canvas.height)
       undoStack.current.push({ kind: 'canvas', target: entry.target, data: current })
       ctx.putImageData(entry.data, 0, 0)

@@ -16,6 +16,8 @@ const PageCanvas = forwardRef<HTMLCanvasElement, PageCanvasProps>(({ side }, ref
       width={PAGE_WIDTH}
       height={PAGE_HEIGHT}
       data-side={side}
+      role="img"
+      aria-label={side === 'left' ? '左ページ' : '右ページ'}
       style={{
         display: 'block',
         width: '50%',
