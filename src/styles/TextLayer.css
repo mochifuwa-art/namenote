@@ -31,3 +31,9 @@
   outline-offset: 3px;
   border-radius: 2px;
 }
+
+/* Force move cursor on all text layers while a cross-area drag is in progress */
+.text-layer--dragging,
+.text-layer--dragging * {
+  cursor: move !important;
+}

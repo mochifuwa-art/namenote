@@ -56,6 +56,9 @@ export default function App() {
     parseInt(localStorage.getItem('namenote_spread_count') ?? '1', 10) || 1,
   )
   const [mobileSide, setMobileSide] = useState<'R' | 'L'>('R')
+  const [bindingDirection, setBindingDirection] = useState<'right' | 'left'>(
+    () => (localStorage.getItem('namenote_binding') as 'right' | 'left') ?? 'right',
+  )
   const [stabilizationStrength, setStabilizationStrength] = useState(30)
   const [inputMode, setInputMode] = useState<InputMode>('auto')
   const inputModeRef = useRef<InputMode>('auto')
@@ -68,7 +71,7 @@ export default function App() {
   const [writingMode, setWritingMode] = useState<TextWritingMode>('horizontal-tb')
   const [textFontSize, setTextFontSize] = useState(18)
   const [textEditorState, setTextEditorState] = useState<{ id: string; screenX: number; screenY: number } | null>(null)
-  const [crossAreaDrag, setCrossAreaDrag] = useState<{ obj: TextObject; clientX: number; clientY: number } | null>(null)
+  const [crossAreaDrag, setCrossAreaDrag] = useState<{ obj: TextObject; clientX: number; clientY: number; grabOffsetX: number; grabOffsetY: number } | null>(null)
 
   // Stable ref to always-current textObjects for history callbacks
   const textObjectsRef = useRef<TextObject[]>([])
@@ -242,6 +245,12 @@ export default function App() {
   }, [sidebarOpen, computeNotebookScale])
 
   // ── Page navigation ──────────────────────────────────────────
+  useEffect(() => { localStorage.setItem('namenote_binding', bindingDirection) }, [bindingDirection])
+
+  // Helper: which canvas side is read first vs second in the current binding direction
+  const firstSide = bindingDirection === 'right' ? 'R' : 'L'  // first page of each spread
+  const lastSide  = bindingDirection === 'right' ? 'L' : 'R'  // second page of each spread
+
   const isMobile = () => window.innerWidth <= 700
 
   const goToSpread = useCallback(
@@ -265,30 +274,31 @@ export default function App() {
 
   const handlePrevPage = () => {
     if (isMobile()) {
-      if (mobileSide === 'L') setMobileSide('R')
-      else if (currentSpread > 0) goToSpread(currentSpread - 1, 'L')
+      if (mobileSide === lastSide) setMobileSide(firstSide as 'R' | 'L')
+      else if (currentSpread > 0) goToSpread(currentSpread - 1, lastSide as 'R' | 'L')
     } else {
       if (currentSpread > 0) goToSpread(currentSpread - 1)
     }
   }
   const handleNextPage = () => {
     if (isMobile()) {
-      if (mobileSide === 'R') setMobileSide('L')
-      else if (currentSpread < totalSpreads - 1) goToSpread(currentSpread + 1, 'R')
+      if (mobileSide === firstSide) setMobileSide(lastSide as 'R' | 'L')
+      else if (currentSpread < totalSpreads - 1) goToSpread(currentSpread + 1, firstSide as 'R' | 'L')
     } else {
       if (currentSpread < totalSpreads - 1) goToSpread(currentSpread + 1)
     }
   }
 
   const prevDisabled = isMobile()
-    ? currentSpread === 0 && mobileSide === 'R'
+    ? currentSpread === 0 && mobileSide === firstSide
     : currentSpread === 0
   const nextDisabled = isMobile()
-    ? currentSpread === totalSpreads - 1 && mobileSide === 'L'
+    ? currentSpread === totalSpreads - 1 && mobileSide === lastSide
     : currentSpread === totalSpreads - 1
 
+  const mobilePageNum = mobileSide === firstSide ? currentSpread * 2 + 1 : currentSpread * 2 + 2
   const navLabel = isMobile()
-    ? `p.${currentSpread * 2 + (mobileSide === 'R' ? 1 : 2)} / ${totalSpreads * 2}`
+    ? `p.${mobilePageNum} / ${totalSpreads * 2}`
     : `${currentSpread + 1} / ${totalSpreads}`
 
   const handleAddSpread = () => {
@@ -296,8 +306,10 @@ export default function App() {
     const next = pageStore.getSpreadCount()
     setTotalSpreads(next + 1)
     setCurrentSpread(next)
-    setMobileSide('R')
+    setMobileSide(firstSide as 'R' | 'L')
   }
+
+  const handleToggleBinding = () => setBindingDirection(d => d === 'right' ? 'left' : 'right')
 
   // ── Individual page operations (overview panel) ───────────────
   const handleReorderPages = useCallback(
@@ -416,8 +428,8 @@ export default function App() {
 
   // ── Cross-area text drag ──────────────────────────────────────
   const handleBeginCrossAreaDrag = useCallback(
-    (obj: TextObject, pointerId: number, clientX: number, clientY: number) => {
-      setCrossAreaDrag({ obj, clientX, clientY })
+    (obj: TextObject, pointerId: number, clientX: number, clientY: number, grabOffsetX: number, grabOffsetY: number) => {
+      setCrossAreaDrag({ obj, clientX, clientY, grabOffsetX, grabOffsetY })
 
       const onMove = (e: PointerEvent) => {
         if (e.pointerId !== pointerId) return
@@ -443,19 +455,24 @@ export default function App() {
           e.clientX >= r.left && e.clientX <= r.right &&
           e.clientY >= r.top  && e.clientY <= r.bottom
 
+        // Adjust drop position by grab offset so the text lands where it was grabbed,
+        // not at the pointer tip (which would be the text box's top-left corner).
+        const dropX = e.clientX - grabOffsetX
+        const dropY = e.clientY - grabOffsetY
+
         if (memoRect && inRect(memoRect)) {
           newSide = 'memo'
           newSpread = 0
-          newX = (e.clientX - memoRect.left) * (260 / memoRect.width)
-          newY = (e.clientY - memoRect.top)  * (4000 / memoRect.height)
+          newX = (dropX - memoRect.left) * (260 / memoRect.width)
+          newY = (dropY - memoRect.top)  * (4000 / memoRect.height)
         } else if (leftRect && inRect(leftRect)) {
           newSide = 'left'
-          newX = (e.clientX - leftRect.left) * (PAGE_WIDTH / leftRect.width)
-          newY = (e.clientY - leftRect.top)  * (PAGE_HEIGHT / leftRect.height)
+          newX = (dropX - leftRect.left) * (PAGE_WIDTH / leftRect.width)
+          newY = (dropY - leftRect.top)  * (PAGE_HEIGHT / leftRect.height)
         } else if (rightRect && inRect(rightRect)) {
           newSide = 'right'
-          newX = (e.clientX - rightRect.left) * (PAGE_WIDTH / rightRect.width)
-          newY = (e.clientY - rightRect.top)  * (PAGE_HEIGHT / rightRect.height)
+          newX = (dropX - rightRect.left) * (PAGE_WIDTH / rightRect.width)
+          newY = (dropY - rightRect.top)  * (PAGE_HEIGHT / rightRect.height)
         } else {
           return  // dropped outside — keep original position
         }
@@ -815,6 +832,7 @@ export default function App() {
           currentSpread={currentSpread}
           totalSpreads={totalSpreads}
           mobileSide={mobileSide}
+          bindingDirection={bindingDirection}
           textObjects={textObjects}
           isTextActive={isTextActive}
           textColor={tool.color}
@@ -903,6 +921,8 @@ export default function App() {
         onStabilizationStrengthChange={setStabilizationStrength}
         inputMode={inputMode}
         onInputModeChange={setInputMode}
+        bindingDirection={bindingDirection}
+        onToggleBinding={handleToggleBinding}
       />
 
       {/* Page overview panel */}
@@ -916,6 +936,7 @@ export default function App() {
         onInsertPage={handleInsertPage}
         onDeletePage={handleDeletePage}
         getThumbnail={pageStore.getThumbnail}
+        bindingDirection={bindingDirection}
       />
 
       {/* Cross-area drag ghost */}
@@ -923,8 +944,8 @@ export default function App() {
         <div
           style={{
             position: 'fixed',
-            left: crossAreaDrag.clientX + 4,
-            top: crossAreaDrag.clientY + 4,
+            left: crossAreaDrag.clientX - crossAreaDrag.grabOffsetX,
+            top: crossAreaDrag.clientY - crossAreaDrag.grabOffsetY,
             zIndex: 3000,
             pointerEvents: 'none',
             writingMode: crossAreaDrag.obj.writingMode as 'horizontal-tb' | 'vertical-rl',
