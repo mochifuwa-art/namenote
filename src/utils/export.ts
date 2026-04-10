@@ -141,20 +141,13 @@ export function exportAllAsPdf(
       const tctx = tmp.getContext('2d')!
       // Left page text
       renderTextToCtx(tctx, spreadTexts, 'left', i)
-      // Right page text (offset by PAGE_WIDTH)
-      const rightTexts = spreadTexts
-        .filter(o => o.side === 'right')
-        .map(o => ({ ...o, x: o.x + PAGE_WIDTH }))
-      for (const obj of rightTexts) {
-        tctx.save()
-        tctx.fillStyle = obj.color
-        tctx.font = `${obj.fontSize}px "Hiragino Mincho ProN", serif`
-        tctx.textBaseline = 'top'
-        const lines = obj.text.split('\n')
-        const lineH = obj.fontSize * 1.5
-        lines.forEach((line, li) => tctx.fillText(line, obj.x, obj.y + li * lineH))
-        tctx.restore()
-      }
+      // Right page text (offset by PAGE_WIDTH to place on combined canvas)
+      renderTextToCtx(
+        tctx,
+        spreadTexts.filter(o => o.side === 'right').map(o => ({ ...o, x: o.x + PAGE_WIDTH })),
+        'right',
+        i,
+      )
       pdf.addImage(tmp.toDataURL('image/png'), 'PNG', 0, 0, mmW * 2, mmH)
     }
   }

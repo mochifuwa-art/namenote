@@ -40,11 +40,11 @@ function findRectEntryPoint(
 ): { x: number; y: number } {
   const dx = curr.x - prev.x
   const dy = curr.y - prev.y
-  let tMin = Infinity
+  let tMin: number | null = null
 
   const tryEdge = (t: number, coord: number, lo: number, hi: number) => {
     if (t >= 0 && t <= 1 && coord >= lo && coord <= hi) {
-      tMin = Math.min(tMin, t)
+      if (tMin === null || t < tMin) tMin = t
     }
   }
 
@@ -61,7 +61,7 @@ function findRectEntryPoint(
     tryEdge(tB, prev.x + tB * dx, rect.left, rect.right)
   }
 
-  if (tMin === Infinity) return curr
+  if (tMin === null) return curr
   return { x: prev.x + tMin * dx, y: prev.y + tMin * dy }
 }
 
@@ -154,6 +154,9 @@ export function useDrawing({
   const activeRectRef = useRef<DOMRect | null>(null)
   const activeCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const stabilizerRef = useRef<StringStabilizer | null>(null)
+  // true while the pointer is outside the active canvas during an ongoing stroke.
+  // Used to clip at the exit edge and re-enter cleanly without a connecting line.
+  const wasOutsideRef = useRef(false)
 
   const applyToolToCtx = useCallback(
     (ctx: CanvasRenderingContext2D) => {
@@ -201,6 +204,7 @@ export function useDrawing({
 
     isDrawingRef.current = true
     pendingPointerRef.current = false
+    wasOutsideRef.current = false
     lastPointRef.current = coords
     lastScreenPosRef.current = { x: clientX, y: clientY }
     visitedSidesRef.current = new Set([target.side])
@@ -293,16 +297,18 @@ export function useDrawing({
             continue
           }
 
-          // 1. Draw to the exit edge of the current canvas
-          const exitScreen = findRectEntryPoint(lastScreenPosRef.current, currScreen, rect)
-          const exitCoords = toCanvasCoords(exitScreen.x, exitScreen.y, rect, canvas)
-          const exitPt = stabilizerRef.current
-            ? stabilizerRef.current.process(exitCoords.x, exitCoords.y)
-            : exitCoords
-          ctx.beginPath()
-          ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y)
-          ctx.lineTo(exitPt.x, exitPt.y)
-          ctx.stroke()
+          // 1. Draw to the exit edge of the current canvas (skip if already drawn by wasOutside)
+          if (!wasOutsideRef.current) {
+            const exitScreen = findRectEntryPoint(lastScreenPosRef.current, currScreen, rect)
+            const exitCoords = toCanvasCoords(exitScreen.x, exitScreen.y, rect, canvas)
+            const exitPt = stabilizerRef.current
+              ? stabilizerRef.current.process(exitCoords.x, exitCoords.y)
+              : exitCoords
+            ctx.beginPath()
+            ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y)
+            ctx.lineTo(exitPt.x, exitPt.y)
+            ctx.stroke()
+          }
 
           // 2. Save history for the new canvas before first mark (once per stroke)
           if (!visitedSidesRef.current.has(newSide)) {
@@ -343,13 +349,37 @@ export function useDrawing({
           newCtx.lineTo(pt.x, pt.y)
           newCtx.stroke()
           lastPointRef.current = pt
+          wasOutsideRef.current = false
 
         } else if (!ceTarget || ceTarget.kind !== 'page') {
-          // ── In the spine gap between pages — don't draw, just track position ──
-          // (nothing to do — lastScreenPosRef is updated below)
+          // ── Pointer left the active canvas — clip at exit edge on first departure ──
+          if (!wasOutsideRef.current) {
+            const exitScreen = findRectEntryPoint(lastScreenPosRef.current, currScreen, rect)
+            const exitCoords = toCanvasCoords(exitScreen.x, exitScreen.y, rect, canvas)
+            const exitPt = stabilizerRef.current
+              ? stabilizerRef.current.process(exitCoords.x, exitCoords.y)
+              : exitCoords
+            ctx.beginPath()
+            ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y)
+            ctx.lineTo(exitPt.x, exitPt.y)
+            ctx.stroke()
+            lastPointRef.current = exitPt
+            wasOutsideRef.current = true
+          }
 
         } else {
           // ── Same canvas as before — normal drawing ─────────────────────
+          if (wasOutsideRef.current) {
+            // Re-entering the same canvas: jump to the exact entry edge, no connecting line
+            const entryScreen = findRectEntryPoint(lastScreenPosRef.current, currScreen, rect)
+            const entryCoords = toCanvasCoords(entryScreen.x, entryScreen.y, rect, canvas)
+            const strLen = strengthToStringLength(stabilizationStrength)
+            stabilizerRef.current = strLen > 0
+              ? new StringStabilizer(entryCoords.x, entryCoords.y, strLen)
+              : null
+            lastPointRef.current = entryCoords
+            wasOutsideRef.current = false
+          }
           const raw = toCanvasCoords(ce.clientX, ce.clientY, rect, canvas)
           const pt = stabilizerRef.current ? stabilizerRef.current.process(raw.x, raw.y) : raw
           ctx.beginPath()
@@ -377,7 +407,9 @@ export function useDrawing({
       if (!isDrawingRef.current) return
 
       // Snap to exact pointer position so endpoint is accurate
-      if (stabilizerRef.current && activeCtxRef.current && activeRectRef.current && activeCanvasRef.current) {
+      // (skip if pointer ended outside the canvas — nothing to snap to)
+      if (stabilizerRef.current && activeCtxRef.current && activeRectRef.current
+          && activeCanvasRef.current && !wasOutsideRef.current) {
         const raw = toCanvasCoords(e.clientX, e.clientY, activeRectRef.current, activeCanvasRef.current)
         const final = stabilizerRef.current.finish(raw.x, raw.y)
         const ctx = activeCtxRef.current
@@ -404,6 +436,7 @@ export function useDrawing({
   const cancelStroke = useCallback(() => {
     pendingPointerRef.current = false
     lastOutsidePosRef.current = null
+    wasOutsideRef.current = false
     if (!isDrawingRef.current) return
     isDrawingRef.current = false
     stabilizerRef.current = null
