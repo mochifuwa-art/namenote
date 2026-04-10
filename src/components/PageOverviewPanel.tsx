@@ -1,9 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import '../styles/PageOverview.css'
 
-// flat index: 0 = spread 0, side R (p.1); 1 = spread 0, side L (p.2); etc.
+// flat index: 0 = first page (p.1), 1 = second page (p.2), etc.
 const flatToSpread = (i: number) => Math.floor(i / 2)
-const flatToSide = (i: number): 'L' | 'R' => (i % 2 === 0 ? 'R' : 'L')
 
 interface Props {
   isOpen: boolean
@@ -15,6 +14,7 @@ interface Props {
   onInsertPage: (atFlat: number) => void
   onDeletePage: (flatIndex: number) => void
   getThumbnail: (spreadIndex: number, side: 'L' | 'R') => string | null
+  bindingDirection: 'right' | 'left'
 }
 
 export default function PageOverviewPanel({
@@ -27,7 +27,14 @@ export default function PageOverviewPanel({
   onInsertPage,
   onDeletePage,
   getThumbnail,
+  bindingDirection,
 }: Props) {
+  // flat index 0 = p.1 (firstSide), 1 = p.2 (lastSide), etc.
+  // 右綴じ: flat0=R(p.1), flat1=L(p.2)  左綴じ: flat0=L(p.1), flat1=R(p.2)
+  const flatToSide = (i: number): 'L' | 'R' =>
+    bindingDirection === 'right'
+      ? (i % 2 === 0 ? 'R' : 'L')
+      : (i % 2 === 0 ? 'L' : 'R')
   const [dragging, setDragging] = useState<number | null>(null)
   const [dropPos, setDropPos] = useState<number | null>(null)
   const [version, setVersion] = useState(0)

@@ -138,6 +138,8 @@ interface ToolbarProps {
   onStabilizationStrengthChange: (v: number) => void
   inputMode: InputMode
   onInputModeChange: (mode: InputMode) => void
+  bindingDirection: 'right' | 'left'
+  onToggleBinding: () => void
 }
 
 export default function Toolbar({
@@ -180,6 +182,8 @@ export default function Toolbar({
   onStabilizationStrengthChange,
   inputMode,
   onInputModeChange,
+  bindingDirection,
+  onToggleBinding,
 }: ToolbarProps) {
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [showColorPicker, setShowColorPicker] = useState(false)
@@ -403,10 +407,24 @@ export default function Toolbar({
       )}
 
       {/* ── Page navigation ─────────────────────────────────── */}
+      {/* 右綴じ: ◀=次スプレッド（高インデックス）, ▶=前スプレッド（低インデックス） */}
+      {/* 左綴じ: ◀=前スプレッド（低インデックス）, ▶=次スプレッド（高インデックス） */}
       <div className="toolbar-pod">
-        <button className="nav-btn" onClick={onNextSpread} disabled={nextDisabled} title="前のスプレッド" style={{ fontSize: 13 }}>◀</button>
+        <button
+          className="nav-btn"
+          onClick={bindingDirection === 'right' ? onNextSpread : onPrevSpread}
+          disabled={bindingDirection === 'right' ? nextDisabled : prevDisabled}
+          title={bindingDirection === 'right' ? '次のスプレッド' : '前のスプレッド'}
+          style={{ fontSize: 13 }}
+        >◀</button>
         <span className="spread-label">{navLabel}</span>
-        <button className="nav-btn" onClick={onPrevSpread} disabled={prevDisabled} title="次のスプレッド" style={{ fontSize: 13 }}>▶</button>
+        <button
+          className="nav-btn"
+          onClick={bindingDirection === 'right' ? onPrevSpread : onNextSpread}
+          disabled={bindingDirection === 'right' ? prevDisabled : nextDisabled}
+          title={bindingDirection === 'right' ? '前のスプレッド' : '次のスプレッド'}
+          style={{ fontSize: 13 }}
+        >▶</button>
         <button className="nav-btn add-btn" onClick={onAddSpread} title="スプレッド追加" style={{ fontSize: 17 }}>＋</button>
         <button className="tool-btn" onClick={onOpenOverview} title="ページ一覧">
           <IconOverview />
@@ -445,6 +463,10 @@ export default function Toolbar({
               <button onClick={() => { fileInputRef.current?.click(); setShowExportMenu(false) }}>プロジェクトを開く…</button>
               <div className="export-sep" />
               <button onClick={() => { pdfInputRef.current?.click(); setShowExportMenu(false) }}>PDFを読み込む…</button>
+              <div className="export-sep" />
+              <button onClick={() => { onToggleBinding(); setShowExportMenu(false) }}>
+                {bindingDirection === 'right' ? '左綴じに切り替え' : '右綴じに切り替え'}
+              </button>
               <div className="export-sep" />
               <button
                 onClick={() => { setShowExportMenu(false); onResetNotebook() }}
