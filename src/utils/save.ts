@@ -25,7 +25,7 @@ export async function saveProjectFile(spreadCount: number): Promise<string> {
 
   const json = JSON.stringify(data)
   const blob = new Blob([json], { type: 'application/json' })
-  const filename = `namenote_${new Date().toISOString().slice(0, 10)}.namenote`
+  const filename = `namenote_${new Date().toISOString().slice(0, 16).replace('T', '_').replace(':', '-')}.namenote`
   return saveBlobAsDownload(blob, filename)
 }
 

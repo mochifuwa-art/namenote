@@ -99,7 +99,8 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
 
         const canvas = (canvasRef as React.RefObject<HTMLCanvasElement>).current
         if (!canvas) return
-        const ctx = canvas.getContext('2d')!
+        const ctx = canvas.getContext('2d')
+        if (!ctx) return
         applyTool(ctx)
 
         const pt = getCanvasCoords(e.clientX, e.clientY)
