@@ -171,7 +171,7 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
               <canvas
                 ref={canvasRef}
                 className="memo-sidebar__canvas"
-                style={{ touchAction: 'none' }}
+                style={{ touchAction: 'none', backgroundColor: '#fffef8' }}
                 onPointerDown={handlePointerDown}
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}

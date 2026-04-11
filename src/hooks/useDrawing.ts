@@ -373,22 +373,6 @@ export function useDrawing({
         lastScreenPosRef.current = currScreen
       }
 
-      // ── Predicted events: draw 1 event ahead to reduce perceived latency ──
-      // These are NOT run through the stabilizer (would corrupt its state).
-      // The next frame's coalesced events will naturally overdraw them.
-      const predicted = (e.nativeEvent.getPredictedEvents?.() ?? []).slice(0, 1)
-      let predLastPt = lastPointRef.current
-      for (const pe of predicted) {
-        const peTarget = getDrawTarget(pe.clientX, pe.clientY, leftRect, rightRect)
-        if (!peTarget || peTarget.kind !== 'page' || peTarget.side !== activeSide) break
-        if (pe.pointerType === 'pen') ctx.lineWidth = tool.size * Math.max(0.1, pe.pressure)
-        const raw = toCanvasCoords(pe.clientX, pe.clientY, rect, canvas)
-        ctx.beginPath()
-        ctx.moveTo(predLastPt.x, predLastPt.y)
-        ctx.lineTo(raw.x, raw.y)
-        ctx.stroke()
-        predLastPt = raw  // chain predictions; do NOT update lastPointRef
-      }
 
       // Commit local canvas state back to refs for the next move/up event
       activeCtxRef.current = ctx
