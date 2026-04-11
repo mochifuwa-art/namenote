@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import type { DrawingTool, SaveStatus, TextObject, TextWritingMode, InputMode } from './types'
+import type { DrawingTool, ToolType, SaveStatus, TextObject, TextWritingMode, InputMode } from './types'
 import { usePageStore } from './hooks/usePageStore'
 import { useDrawing } from './hooks/useDrawing'
 import { useSelection } from './hooks/useSelection'
@@ -44,6 +44,9 @@ function resolvePointerAction(
 export default function App() {
   const [currentSpread, setCurrentSpread] = useState(0)
   const [tool, setTool] = useState<DrawingTool>({ type: 'pen', color: '#1a1a1a', size: 3 })
+  // Per-tool size memory so pen and eraser each remember their own size
+  const penSizeRef = useRef(3)
+  const eraserSizeRef = useRef(10)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved')
   const [selectionActive, setSelectionActive] = useState(false)
   const [hasClipboard, setHasClipboard] = useState(false)
@@ -487,16 +490,42 @@ export default function App() {
     [currentSpread, memoCanvasRef, leftCanvasRef, rightCanvasRef, history, updateTextObject],
   )
 
+  // ── Tool change with per-tool size memory ────────────────────
+  const handleToolChange = useCallback((newTool: DrawingTool) => {
+    setTool(prev => {
+      if (prev.type !== newTool.type) {
+        if (prev.type === 'pen') penSizeRef.current = prev.size
+        else if (prev.type === 'eraser') eraserSizeRef.current = prev.size
+        const size = newTool.type === 'pen' ? penSizeRef.current
+                   : newTool.type === 'eraser' ? eraserSizeRef.current
+                   : newTool.size
+        return { ...newTool, size }
+      }
+      if (newTool.type === 'pen') penSizeRef.current = newTool.size
+      else if (newTool.type === 'eraser') eraserSizeRef.current = newTool.size
+      return newTool
+    })
+  }, [])
+
   // ── Keyboard shortcuts ───────────────────────────────────────
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       // Don't capture shortcuts while typing in the text editor
       if ((e.target as HTMLElement).closest('.text-editor-textarea')) return
 
-      if (e.key === 'p' && !e.ctrlKey && !e.metaKey) setTool(t => ({ ...t, type: 'pen' }))
-      if (e.key === 'e' && !e.ctrlKey && !e.metaKey) setTool(t => ({ ...t, type: 'eraser' }))
-      if (e.key === 'l' && !e.ctrlKey && !e.metaKey) setTool(t => ({ ...t, type: 'lasso' }))
-      if (e.key === 't' && !e.ctrlKey && !e.metaKey) setTool(t => ({ ...t, type: 'text' }))
+      const switchTo = (type: ToolType) => setTool(t => {
+        if (t.type === type) return t
+        if (t.type === 'pen') penSizeRef.current = t.size
+        else if (t.type === 'eraser') eraserSizeRef.current = t.size
+        const size = type === 'pen' ? penSizeRef.current
+                   : type === 'eraser' ? eraserSizeRef.current
+                   : t.size
+        return { ...t, type, size }
+      })
+      if (e.key === 'p' && !e.ctrlKey && !e.metaKey) switchTo('pen')
+      if (e.key === 'e' && !e.ctrlKey && !e.metaKey) switchTo('eraser')
+      if (e.key === 'l' && !e.ctrlKey && !e.metaKey) switchTo('lasso')
+      if (e.key === 't' && !e.ctrlKey && !e.metaKey) switchTo('text')
       if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveNow() }
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === 'z') { e.preventDefault(); history.undo(); markUnsaved() }
       if ((e.ctrlKey || e.metaKey) && (e.shiftKey && e.key === 'z' || e.key === 'y')) { e.preventDefault(); history.redo(); markUnsaved() }
@@ -883,7 +912,7 @@ export default function App() {
       {/* Toolbar */}
       <Toolbar
         tool={tool}
-        onToolChange={t => { setTool(t); if (t.type !== 'lasso') selection.clearSelection() }}
+        onToolChange={t => { handleToolChange(t); if (t.type !== 'lasso') selection.clearSelection() }}
         navLabel={navLabel}
         prevDisabled={prevDisabled}
         nextDisabled={nextDisabled}
