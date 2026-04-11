@@ -1,10 +1,11 @@
 import { forwardRef, useRef, useCallback, useEffect } from 'react'
-import type { DrawingTool, TextObject, TextWritingMode, InputMode } from '../types'
+import type { DrawingTool, TextObject, TextWritingMode, InputMode, DrawTarget } from '../types'
 import TextLayer from './TextLayer'
 import '../styles/MemoSidebar.css'
 
 const MEMO_CANVAS_WIDTH = 260
 const MEMO_CANVAS_HEIGHT = 4000
+const PRESSURE_ALPHA = 0.3
 
 interface MemoSidebarProps {
   open: boolean
@@ -22,6 +23,7 @@ interface MemoSidebarProps {
   onUpdateText: (id: string, updates: Partial<Pick<TextObject, 'x' | 'y' | 'text'>>) => void
   onEditRequest: (id: string, screenX: number, screenY: number) => void
   onBeginCrossAreaDrag?: (obj: TextObject, pointerId: number, clientX: number, clientY: number, grabOffsetX: number, grabOffsetY: number) => void
+  onBeforeStroke?: (target: DrawTarget) => void
 }
 
 const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
@@ -41,12 +43,15 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
       onUpdateText,
       onEditRequest,
       onBeginCrossAreaDrag,
+      onBeforeStroke,
     },
     canvasRef,
   ) => {
     const scrollRef = useRef<HTMLDivElement>(null)
     const isDrawingRef = useRef(false)
     const lastPtRef = useRef({ x: 0, y: 0 })
+    const lastMidRef = useRef({ x: 0, y: 0 })
+    const smoothedPressureRef = useRef(1.0)
     const activeCtxRef = useRef<CanvasRenderingContext2D | null>(null)
     // Touch-scroll tracking (AUTO/PAN mode, touch only)
     const isTouchScrollingRef = useRef(false)
@@ -71,11 +76,11 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
     }, [])
 
     const applyTool = useCallback(
-      (ctx: CanvasRenderingContext2D) => {
+      (ctx: CanvasRenderingContext2D, pressure: number) => {
         ctx.globalCompositeOperation =
           tool.type === 'eraser' ? 'destination-out' : 'source-over'
         ctx.strokeStyle = tool.color
-        ctx.lineWidth = tool.size
+        ctx.lineWidth = tool.size * pressure
         ctx.lineCap = 'round'
         ctx.lineJoin = 'round'
       },
@@ -101,10 +106,14 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
         if (!canvas) return
         const ctx = canvas.getContext('2d', { desynchronized: true })
         if (!ctx) return
-        applyTool(ctx)
+
+        onBeforeStroke?.({ kind: 'memo' })
 
         const pt = getCanvasCoords(e.clientX, e.clientY)
         const pressure = e.pointerType === 'pen' ? Math.max(0.1, e.pressure) : 1.0
+        smoothedPressureRef.current = pressure
+
+        // Draw initial dot
         ctx.beginPath()
         ctx.arc(pt.x, pt.y, (tool.size / 2) * pressure, 0, Math.PI * 2)
         ctx.fillStyle =
@@ -115,9 +124,10 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
 
         isDrawingRef.current = true
         lastPtRef.current = pt
+        lastMidRef.current = pt
         activeCtxRef.current = ctx
       },
-      [canvasRef, applyTool, getCanvasCoords, tool, isTextActive, inputMode],
+      [canvasRef, applyTool, getCanvasCoords, tool, isTextActive, inputMode, onBeforeStroke],
     )
 
     const handlePointerMove = useCallback(
@@ -135,12 +145,21 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
 
         const pt = getCanvasCoords(e.clientX, e.clientY)
         const ctx = activeCtxRef.current
-        applyTool(ctx)
+        const pressure = e.pointerType === 'pen' ? Math.max(0.1, e.pressure) : 1.0
+        smoothedPressureRef.current =
+          smoothedPressureRef.current * (1 - PRESSURE_ALPHA) + pressure * PRESSURE_ALPHA
+        applyTool(ctx, smoothedPressureRef.current)
+
+        const mid = {
+          x: (lastPtRef.current.x + pt.x) / 2,
+          y: (lastPtRef.current.y + pt.y) / 2,
+        }
         ctx.beginPath()
-        ctx.moveTo(lastPtRef.current.x, lastPtRef.current.y)
-        ctx.lineTo(pt.x, pt.y)
+        ctx.moveTo(lastMidRef.current.x, lastMidRef.current.y)
+        ctx.quadraticCurveTo(lastPtRef.current.x, lastPtRef.current.y, mid.x, mid.y)
         ctx.stroke()
         lastPtRef.current = pt
+        lastMidRef.current = mid
       },
       [applyTool, getCanvasCoords],
     )
@@ -153,11 +172,26 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
           return
         }
         if (!isDrawingRef.current) return
+
+        // Draw final segment to pointer-up position
+        if (activeCtxRef.current) {
+          const pt = getCanvasCoords(e.clientX, e.clientY)
+          const ctx = activeCtxRef.current
+          const pressure = e.pointerType === 'pen' ? Math.max(0.1, e.pressure) : 1.0
+          smoothedPressureRef.current =
+            smoothedPressureRef.current * (1 - PRESSURE_ALPHA) + pressure * PRESSURE_ALPHA
+          applyTool(ctx, smoothedPressureRef.current)
+          ctx.beginPath()
+          ctx.moveTo(lastMidRef.current.x, lastMidRef.current.y)
+          ctx.quadraticCurveTo(lastPtRef.current.x, lastPtRef.current.y, pt.x, pt.y)
+          ctx.stroke()
+        }
+
         isDrawingRef.current = false
         activeCtxRef.current = null
         e.currentTarget.releasePointerCapture(e.pointerId)
       },
-      [],
+      [applyTool, getCanvasCoords],
     )
 
     return (

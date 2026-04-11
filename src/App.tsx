@@ -432,6 +432,7 @@ export default function App() {
   // ── Cross-area text drag ──────────────────────────────────────
   const handleBeginCrossAreaDrag = useCallback(
     (obj: TextObject, pointerId: number, clientX: number, clientY: number, grabOffsetX: number, grabOffsetY: number) => {
+      history.pushText()
       setCrossAreaDrag({ obj, clientX, clientY, grabOffsetX, grabOffsetY })
 
       const onMove = (e: PointerEvent) => {
@@ -480,7 +481,6 @@ export default function App() {
           return  // dropped outside — keep original position
         }
 
-        history.pushText()
         updateTextObject(obj.id, { side: newSide, spread: newSpread, x: newX, y: newY })
       }
 
@@ -838,6 +838,7 @@ export default function App() {
         onUpdateText={updateTextObject}
         onEditRequest={openTextEditor}
         onBeginCrossAreaDrag={handleBeginCrossAreaDrag}
+        onBeforeStroke={history.push}
       />
 
       {/* Notebook spread */}
