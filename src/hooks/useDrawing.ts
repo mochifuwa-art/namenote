@@ -9,6 +9,9 @@ function getPressure(e: { pointerType: string; pressure: number }): number {
   return e.pointerType === 'pen' ? Math.max(0.1, e.pressure) : 1.0
 }
 
+// Exponential moving average factor for pressure smoothing (lower = smoother)
+const PRESSURE_ALPHA = 0.3
+
 function getDrawTarget(
   clientX: number,
   clientY: number,
@@ -162,6 +165,10 @@ export function useDrawing({
   // true while the pointer is outside the active canvas during an ongoing stroke.
   // Used to clip at the exit edge and re-enter cleanly without a connecting line.
   const wasOutsideRef = useRef(false)
+  // Quadratic curve midpoint tracking for smooth curves
+  const lastMidRef = useRef({ x: 0, y: 0 })
+  // Exponential moving average of pen pressure for smooth width transitions
+  const smoothedPressureRef = useRef(1.0)
 
   const applyToolToCtx = useCallback(
     (ctx: CanvasRenderingContext2D, pressure = 1.0) => {
@@ -213,6 +220,8 @@ export function useDrawing({
     pendingPointerRef.current = false
     wasOutsideRef.current = false
     lastPointRef.current = coords
+    lastMidRef.current = coords
+    smoothedPressureRef.current = pressure
     lastScreenPosRef.current = { x: clientX, y: clientY }
     visitedSidesRef.current = new Set([target.side])
     activeTargetRef.current = target
@@ -288,13 +297,13 @@ export function useDrawing({
       let rect = activeRectRef.current!
       let activeSide = (activeTargetRef.current as { side: 'left' | 'right' }).side
 
-      applyToolToCtx(ctx)
-
       for (const ce of events) {
         const currScreen = { x: ce.clientX, y: ce.clientY }
         const ceTarget = getDrawTarget(ce.clientX, ce.clientY, leftRect, rightRect)
-        // Per-event pressure update (pen only; mouse/touch keep full width)
-        if (ce.pointerType === 'pen') ctx.lineWidth = tool.size * Math.max(0.1, ce.pressure)
+        // Per-event pressure with exponential smoothing for gradual width transitions
+        const rawPressure = ce.pointerType === 'pen' ? Math.max(0.1, ce.pressure) : 1.0
+        smoothedPressureRef.current = smoothedPressureRef.current * (1 - PRESSURE_ALPHA) + rawPressure * PRESSURE_ALPHA
+        applyToolToCtx(ctx, smoothedPressureRef.current)
 
         if (ceTarget && ceTarget.kind === 'page' && ceTarget.side !== activeSide) {
           // ── Cross-page transition ──────────────────────────────────────
@@ -314,8 +323,8 @@ export function useDrawing({
               ? stabilizerRef.current.process(exitCoords.x, exitCoords.y)
               : exitCoords
             ctx.beginPath()
-            ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y)
-            ctx.lineTo(exitPt.x, exitPt.y)
+            ctx.moveTo(lastMidRef.current.x, lastMidRef.current.y)
+            ctx.quadraticCurveTo(lastPointRef.current.x, lastPointRef.current.y, exitPt.x, exitPt.y)
             ctx.stroke()
           }
 
@@ -336,12 +345,11 @@ export function useDrawing({
             : null
 
           // 5. Switch active canvas and draw initial dot at entry
-          const entryPressure = ce.pointerType === 'pen' ? Math.max(0.1, ce.pressure) : 1.0
           const newCtx = newCanvas.getContext('2d', { desynchronized: true })
           if (!newCtx) continue
-          applyToolToCtx(newCtx, entryPressure)
+          applyToolToCtx(newCtx, smoothedPressureRef.current)
           newCtx.beginPath()
-          newCtx.arc(entryCoords.x, entryCoords.y, (tool.size / 2) * entryPressure, 0, Math.PI * 2)
+          newCtx.arc(entryCoords.x, entryCoords.y, (tool.size / 2) * smoothedPressureRef.current, 0, Math.PI * 2)
           newCtx.fillStyle = tool.type === 'eraser' ? 'rgba(0,0,0,1)' : tool.color
           newCtx.globalCompositeOperation = tool.type === 'eraser' ? 'destination-out' : 'source-over'
           newCtx.fill()
@@ -351,15 +359,18 @@ export function useDrawing({
           rect = newRect
           activeSide = newSide
           lastPointRef.current = entryCoords
+          lastMidRef.current = entryCoords
 
           // 6. Continue drawing to the current event position
           const raw = toCanvasCoords(ce.clientX, ce.clientY, newRect, newCanvas)
           const pt = stabilizerRef.current ? stabilizerRef.current.process(raw.x, raw.y) : raw
+          const continueMid = { x: (lastPointRef.current.x + pt.x) / 2, y: (lastPointRef.current.y + pt.y) / 2 }
           newCtx.beginPath()
-          newCtx.moveTo(lastPointRef.current.x, lastPointRef.current.y)
-          newCtx.lineTo(pt.x, pt.y)
+          newCtx.moveTo(lastMidRef.current.x, lastMidRef.current.y)
+          newCtx.quadraticCurveTo(lastPointRef.current.x, lastPointRef.current.y, continueMid.x, continueMid.y)
           newCtx.stroke()
           lastPointRef.current = pt
+          lastMidRef.current = continueMid
           wasOutsideRef.current = false
 
         } else if (!ceTarget || ceTarget.kind !== 'page') {
@@ -371,10 +382,11 @@ export function useDrawing({
               ? stabilizerRef.current.process(exitCoords.x, exitCoords.y)
               : exitCoords
             ctx.beginPath()
-            ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y)
-            ctx.lineTo(exitPt.x, exitPt.y)
+            ctx.moveTo(lastMidRef.current.x, lastMidRef.current.y)
+            ctx.quadraticCurveTo(lastPointRef.current.x, lastPointRef.current.y, exitPt.x, exitPt.y)
             ctx.stroke()
             lastPointRef.current = exitPt
+            lastMidRef.current = exitPt
             wasOutsideRef.current = true
           }
 
@@ -389,15 +401,18 @@ export function useDrawing({
               ? new StringStabilizer(entryCoords.x, entryCoords.y, strLen)
               : null
             lastPointRef.current = entryCoords
+            lastMidRef.current = entryCoords
             wasOutsideRef.current = false
           }
           const raw = toCanvasCoords(ce.clientX, ce.clientY, rect, canvas)
           const pt = stabilizerRef.current ? stabilizerRef.current.process(raw.x, raw.y) : raw
+          const mid = { x: (lastPointRef.current.x + pt.x) / 2, y: (lastPointRef.current.y + pt.y) / 2 }
           ctx.beginPath()
-          ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y)
-          ctx.lineTo(pt.x, pt.y)
+          ctx.moveTo(lastMidRef.current.x, lastMidRef.current.y)
+          ctx.quadraticCurveTo(lastPointRef.current.x, lastPointRef.current.y, mid.x, mid.y)
           ctx.stroke()
           lastPointRef.current = pt
+          lastMidRef.current = mid
         }
 
         lastScreenPosRef.current = currScreen
@@ -418,17 +433,19 @@ export function useDrawing({
       pendingPointerRef.current = false
       if (!isDrawingRef.current) return
 
-      // Snap to exact pointer position so endpoint is accurate
+      // Draw final segment from the last midpoint to the exact pointer position
       // (skip if pointer ended outside the canvas — nothing to snap to)
-      if (stabilizerRef.current && activeCtxRef.current && activeRectRef.current
-          && activeCanvasRef.current && !wasOutsideRef.current) {
+      if (activeCtxRef.current && activeRectRef.current && activeCanvasRef.current && !wasOutsideRef.current) {
         const raw = toCanvasCoords(e.clientX, e.clientY, activeRectRef.current, activeCanvasRef.current)
-        const final = stabilizerRef.current.finish(raw.x, raw.y)
+        const final = stabilizerRef.current ? stabilizerRef.current.finish(raw.x, raw.y) : raw
         const ctx = activeCtxRef.current
-        applyToolToCtx(ctx)
+        // Use final pen pressure (smoothed) so lifting gently produces a thin endpoint
+        const rawPressure = getPressure(e)
+        smoothedPressureRef.current = smoothedPressureRef.current * (1 - PRESSURE_ALPHA) + rawPressure * PRESSURE_ALPHA
+        applyToolToCtx(ctx, smoothedPressureRef.current)
         ctx.beginPath()
-        ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y)
-        ctx.lineTo(final.x, final.y)
+        ctx.moveTo(lastMidRef.current.x, lastMidRef.current.y)
+        ctx.quadraticCurveTo(lastPointRef.current.x, lastPointRef.current.y, final.x, final.y)
         ctx.stroke()
       }
       stabilizerRef.current = null
