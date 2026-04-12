@@ -1,5 +1,6 @@
 import { useRef, useCallback } from 'react'
 import type { DrawingTool, DrawTarget } from '../types'
+import { CANVAS_SCALE } from '../utils/canvasScale'
 
 const PAGE_WIDTH = 560
 const PAGE_HEIGHT = 800
@@ -113,9 +114,10 @@ class StringStabilizer {
 }
 
 function strengthToStringLength(strength: number): number {
-  // Quadratic: 0→0, 50→15, 100→60 (canvas pixels at 1:1 zoom)
+  // Quadratic: 0→0, 50→15, 100→60 (logical pixels). Scale by CANVAS_SCALE so
+  // the physical distance stays consistent after HiDPI backing-store scaling.
   const t = strength / 100
-  return t * t * 60
+  return t * t * 60 * CANVAS_SCALE
 }
 
 // ── Hook interface ────────────────────────────────────────────────────────────
@@ -177,7 +179,9 @@ export function useDrawing({
     (ctx: CanvasRenderingContext2D, pressure = 1.0) => {
       ctx.globalCompositeOperation = tool.type === 'eraser' ? 'destination-out' : 'source-over'
       ctx.strokeStyle = tool.color
-      ctx.lineWidth = tool.size * pressure
+      // Backing store is CANVAS_SCALE× larger than CSS size, so stroke widths must be
+      // scaled accordingly to preserve the user-perceived line thickness.
+      ctx.lineWidth = tool.size * pressure * CANVAS_SCALE
       ctx.lineCap = 'round'
       ctx.lineJoin = 'round'
     },
@@ -208,9 +212,9 @@ export function useDrawing({
 
     const coords = toCanvasCoords(clientX, clientY, rect, canvas)
 
-    // Draw initial dot at entry point, scaled by pressure
+    // Draw initial dot at entry point, scaled by pressure (and HiDPI backing-store scale)
     ctx.beginPath()
-    ctx.arc(coords.x, coords.y, (tool.size / 2) * pressure, 0, Math.PI * 2)
+    ctx.arc(coords.x, coords.y, (tool.size / 2) * pressure * CANVAS_SCALE, 0, Math.PI * 2)
     ctx.fillStyle = tool.type === 'eraser' ? 'rgba(0,0,0,1)' : tool.color
     ctx.globalCompositeOperation = tool.type === 'eraser' ? 'destination-out' : 'source-over'
     ctx.fill()
@@ -353,7 +357,7 @@ export function useDrawing({
           if (!newCtx) continue
           applyToolToCtx(newCtx, smoothedPressureRef.current)
           newCtx.beginPath()
-          newCtx.arc(entryCoords.x, entryCoords.y, (tool.size / 2) * smoothedPressureRef.current, 0, Math.PI * 2)
+          newCtx.arc(entryCoords.x, entryCoords.y, (tool.size / 2) * smoothedPressureRef.current * CANVAS_SCALE, 0, Math.PI * 2)
           newCtx.fillStyle = tool.type === 'eraser' ? 'rgba(0,0,0,1)' : tool.color
           newCtx.globalCompositeOperation = tool.type === 'eraser' ? 'destination-out' : 'source-over'
           newCtx.fill()

@@ -1,6 +1,7 @@
 import { forwardRef, useRef, useCallback, useEffect } from 'react'
 import type { DrawingTool, TextObject, TextWritingMode, InputMode, DrawTarget } from '../types'
 import TextLayer from './TextLayer'
+import { CANVAS_SCALE } from '../utils/canvasScale'
 import '../styles/MemoSidebar.css'
 
 const MEMO_CANVAS_WIDTH = 260
@@ -58,21 +59,23 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
     const isTouchScrollingRef = useRef(false)
     const touchScrollLastYRef = useRef(0)
 
-    // Initialize canvas size on mount
+    // Initialize canvas size on mount (HiDPI backing store × CANVAS_SCALE)
     useEffect(() => {
       const canvas = (canvasRef as React.RefObject<HTMLCanvasElement>).current
       if (!canvas) return
-      canvas.width = MEMO_CANVAS_WIDTH
-      canvas.height = MEMO_CANVAS_HEIGHT
+      canvas.width = MEMO_CANVAS_WIDTH * CANVAS_SCALE
+      canvas.height = MEMO_CANVAS_HEIGHT * CANVAS_SCALE
     }, [canvasRef])
 
+    // Returns physical-pixel coordinates (multiplied by CANVAS_SCALE) so drawing
+    // operations hit the HiDPI backing store directly without ctx.scale().
     const getCanvasCoords = useCallback((clientX: number, clientY: number) => {
       const scroll = scrollRef.current
       if (!scroll) return { x: clientX, y: clientY }
       const rect = scroll.getBoundingClientRect()
       return {
-        x: clientX - rect.left,
-        y: clientY - rect.top + scroll.scrollTop,
+        x: (clientX - rect.left) * CANVAS_SCALE,
+        y: (clientY - rect.top + scroll.scrollTop) * CANVAS_SCALE,
       }
     }, [])
 
@@ -81,7 +84,8 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
         ctx.globalCompositeOperation =
           tool.type === 'eraser' ? 'destination-out' : 'source-over'
         ctx.strokeStyle = tool.color
-        ctx.lineWidth = tool.size * pressure
+        // Match useDrawing: scale stroke width so perceived thickness matches CSS pixels
+        ctx.lineWidth = tool.size * pressure * CANVAS_SCALE
         ctx.lineCap = 'round'
         ctx.lineJoin = 'round'
       },
@@ -114,9 +118,9 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
         const pressure = e.pointerType === 'pen' ? Math.max(0.1, e.pressure) : 1.0
         smoothedPressureRef.current = pressure
 
-        // Draw initial dot
+        // Draw initial dot (radius scaled for HiDPI backing store)
         ctx.beginPath()
-        ctx.arc(pt.x, pt.y, (tool.size / 2) * pressure, 0, Math.PI * 2)
+        ctx.arc(pt.x, pt.y, (tool.size / 2) * pressure * CANVAS_SCALE, 0, Math.PI * 2)
         ctx.fillStyle =
           tool.type === 'eraser' ? 'rgba(0,0,0,1)' : tool.color
         ctx.globalCompositeOperation =
