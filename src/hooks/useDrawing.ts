@@ -169,6 +169,9 @@ export function useDrawing({
   const lastMidRef = useRef({ x: 0, y: 0 })
   // Exponential moving average of pen pressure for smooth width transitions
   const smoothedPressureRef = useRef(1.0)
+  // Avoid the degenerate first bezier segment (control point = start point → straight line).
+  // Set true at stroke start; cleared after the first move event.
+  const firstMoveRef = useRef(false)
 
   const applyToolToCtx = useCallback(
     (ctx: CanvasRenderingContext2D, pressure = 1.0) => {
@@ -189,14 +192,13 @@ export function useDrawing({
     clientY: number,
     pointerId: number,
     target: DrawTarget,
-    leftRect: DOMRect | null,
-    rightRect: DOMRect | null,
     pressure = 1.0,
   ) => {
     if (target.kind !== 'page') return
     const canvas = target.side === 'left' ? leftCanvasRef.current : rightCanvasRef.current
-    const rect = target.side === 'left' ? leftRect : rightRect
-    if (!canvas || !rect) return
+    if (!canvas) return
+    // Use a fresh rect to avoid stale coordinates after pinch-zoom state update / render lag
+    const rect = canvas.getBoundingClientRect()
 
     onBeforeStroke?.(target)
 
@@ -229,6 +231,7 @@ export function useDrawing({
     activeRectRef.current = rect
     activeCanvasRef.current = canvas
 
+    firstMoveRef.current = true
     overlayRef.current?.setPointerCapture(pointerId)
   }, [leftCanvasRef, rightCanvasRef, overlayRef, onBeforeStroke, applyToolToCtx, tool, stabilizationStrength])
 
@@ -250,7 +253,7 @@ export function useDrawing({
         return
       }
 
-      startStroke(e.clientX, e.clientY, e.pointerId, target, leftRect, rightRect, getPressure(e))
+      startStroke(e.clientX, e.clientY, e.pointerId, target, getPressure(e))
     },
     [enabled, startStroke, leftCanvasRef, rightCanvasRef, overlayRef]
   )
@@ -273,7 +276,7 @@ export function useDrawing({
             ? findRectEntryPoint(lastOutsidePosRef.current, curr, rect)
             : curr
           lastOutsidePosRef.current = null
-          startStroke(entry.x, entry.y, e.pointerId, target, leftRect, rightRect, getPressure(e))
+          startStroke(entry.x, entry.y, e.pointerId, target, getPressure(e))
         } else {
           // Still outside — update the last known outside position for the
           // next sample's entry-point calculation.
@@ -294,8 +297,9 @@ export function useDrawing({
       // Local mutable state — updated on page transitions, committed to refs after the loop
       let ctx = activeCtxRef.current
       let canvas = activeCanvasRef.current
-      let rect = activeRectRef.current!
       let activeSide = (activeTargetRef.current as { side: 'left' | 'right' }).side
+      // Always use the freshly-measured rect to stay correct after pinch-zoom
+      let rect = (activeSide === 'left' ? leftRect : rightRect) ?? activeRectRef.current!
 
       for (const ce of events) {
         const currScreen = { x: ce.clientX, y: ce.clientY }
@@ -406,13 +410,20 @@ export function useDrawing({
           }
           const raw = toCanvasCoords(ce.clientX, ce.clientY, rect, canvas)
           const pt = stabilizerRef.current ? stabilizerRef.current.process(raw.x, raw.y) : raw
-          const mid = { x: (lastPointRef.current.x + pt.x) / 2, y: (lastPointRef.current.y + pt.y) / 2 }
-          ctx.beginPath()
-          ctx.moveTo(lastMidRef.current.x, lastMidRef.current.y)
-          ctx.quadraticCurveTo(lastPointRef.current.x, lastPointRef.current.y, mid.x, mid.y)
-          ctx.stroke()
-          lastPointRef.current = pt
-          lastMidRef.current = mid
+          if (firstMoveRef.current) {
+            // Skip the degenerate opening segment (control pt = start pt → straight line).
+            // Keep lastMidRef at the stroke start; the next event curves naturally from there.
+            firstMoveRef.current = false
+            lastPointRef.current = pt
+          } else {
+            const mid = { x: (lastPointRef.current.x + pt.x) / 2, y: (lastPointRef.current.y + pt.y) / 2 }
+            ctx.beginPath()
+            ctx.moveTo(lastMidRef.current.x, lastMidRef.current.y)
+            ctx.quadraticCurveTo(lastPointRef.current.x, lastPointRef.current.y, mid.x, mid.y)
+            ctx.stroke()
+            lastPointRef.current = pt
+            lastMidRef.current = mid
+          }
         }
 
         lastScreenPosRef.current = currScreen
@@ -435,7 +446,7 @@ export function useDrawing({
 
       // Draw final segment from the last midpoint to the exact pointer position
       // (skip if pointer ended outside the canvas — nothing to snap to)
-      if (activeCtxRef.current && activeRectRef.current && activeCanvasRef.current && !wasOutsideRef.current) {
+      if (!firstMoveRef.current && activeCtxRef.current && activeRectRef.current && activeCanvasRef.current && !wasOutsideRef.current) {
         const raw = toCanvasCoords(e.clientX, e.clientY, activeRectRef.current, activeCanvasRef.current)
         const final = stabilizerRef.current ? stabilizerRef.current.finish(raw.x, raw.y) : raw
         const ctx = activeCtxRef.current
@@ -466,6 +477,7 @@ export function useDrawing({
     pendingPointerRef.current = false
     lastOutsidePosRef.current = null
     wasOutsideRef.current = false
+    firstMoveRef.current = false
     if (!isDrawingRef.current) return
     isDrawingRef.current = false
     stabilizerRef.current = null

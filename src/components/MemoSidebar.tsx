@@ -52,6 +52,7 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
     const lastPtRef = useRef({ x: 0, y: 0 })
     const lastMidRef = useRef({ x: 0, y: 0 })
     const smoothedPressureRef = useRef(1.0)
+    const firstMoveRef = useRef(false)
     const activeCtxRef = useRef<CanvasRenderingContext2D | null>(null)
     // Touch-scroll tracking (AUTO/PAN mode, touch only)
     const isTouchScrollingRef = useRef(false)
@@ -123,6 +124,7 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
         ctx.fill()
 
         isDrawingRef.current = true
+        firstMoveRef.current = true
         lastPtRef.current = pt
         lastMidRef.current = pt
         activeCtxRef.current = ctx
@@ -150,16 +152,21 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
           smoothedPressureRef.current * (1 - PRESSURE_ALPHA) + pressure * PRESSURE_ALPHA
         applyTool(ctx, smoothedPressureRef.current)
 
-        const mid = {
-          x: (lastPtRef.current.x + pt.x) / 2,
-          y: (lastPtRef.current.y + pt.y) / 2,
+        if (firstMoveRef.current) {
+          firstMoveRef.current = false
+          lastPtRef.current = pt
+        } else {
+          const mid = {
+            x: (lastPtRef.current.x + pt.x) / 2,
+            y: (lastPtRef.current.y + pt.y) / 2,
+          }
+          ctx.beginPath()
+          ctx.moveTo(lastMidRef.current.x, lastMidRef.current.y)
+          ctx.quadraticCurveTo(lastPtRef.current.x, lastPtRef.current.y, mid.x, mid.y)
+          ctx.stroke()
+          lastPtRef.current = pt
+          lastMidRef.current = mid
         }
-        ctx.beginPath()
-        ctx.moveTo(lastMidRef.current.x, lastMidRef.current.y)
-        ctx.quadraticCurveTo(lastPtRef.current.x, lastPtRef.current.y, mid.x, mid.y)
-        ctx.stroke()
-        lastPtRef.current = pt
-        lastMidRef.current = mid
       },
       [applyTool, getCanvasCoords],
     )
@@ -174,7 +181,7 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
         if (!isDrawingRef.current) return
 
         // Draw final segment to pointer-up position
-        if (activeCtxRef.current) {
+        if (!firstMoveRef.current && activeCtxRef.current) {
           const pt = getCanvasCoords(e.clientX, e.clientY)
           const ctx = activeCtxRef.current
           const pressure = e.pointerType === 'pen' ? Math.max(0.1, e.pressure) : 1.0
