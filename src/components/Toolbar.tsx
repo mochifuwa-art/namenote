@@ -472,6 +472,8 @@ export default function Toolbar({
                 onClick={() => { setShowExportMenu(false); onResetNotebook() }}
                 style={{ color: '#f87171' }}
               >ノートを初期化…</button>
+              <div className="export-sep" />
+              <div className="export-version">v{__APP_VERSION__}</div>
             </div>
           </>,
           document.body,
