@@ -1,5 +1,6 @@
 import * as pdfjsLib from 'pdfjs-dist'
 import pdfjsWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+import { CANVAS_SCALE } from './canvasScale'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerUrl
 
@@ -23,21 +24,25 @@ export async function importPdfPages(
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
   const pages: string[] = []
 
+  // Render at HiDPI resolution so imported pages match the new page-canvas backing store
+  const physW = pageWidth * CANVAS_SCALE
+  const physH = pageHeight * CANVAS_SCALE
+
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i)
     const viewport = page.getViewport({ scale: 1 })
 
-    // Scale to fit within pageWidth × pageHeight, keeping aspect ratio
-    const scale = Math.min(pageWidth / viewport.width, pageHeight / viewport.height)
+    // Scale to fit within physW × physH, keeping aspect ratio
+    const scale = Math.min(physW / viewport.width, physH / viewport.height)
     const scaledViewport = page.getViewport({ scale })
 
     const canvas = document.createElement('canvas')
-    canvas.width = pageWidth
-    canvas.height = pageHeight
+    canvas.width = physW
+    canvas.height = physH
 
     // Center the rendered page within the canvas
-    const offsetX = (pageWidth - scaledViewport.width) / 2
-    const offsetY = (pageHeight - scaledViewport.height) / 2
+    const offsetX = (physW - scaledViewport.width) / 2
+    const offsetY = (physH - scaledViewport.height) / 2
 
     // pdfjs-dist v5: use `canvas` as primary parameter (canvasContext is legacy)
     await page.render({

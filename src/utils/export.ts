@@ -65,8 +65,14 @@ export function exportSpreadAsJpg(
   const ctx = merged.getContext('2d')!
   ctx.fillStyle = '#fffef8'
   ctx.fillRect(0, 0, w, h)
-  if (rightCanvas) ctx.drawImage(rightCanvas, PAGE_WIDTH, 0)
-  if (leftCanvas) ctx.drawImage(leftCanvas, 0, 0)
+  // Page canvases are in the HiDPI backing store (CANVAS_SCALE×); use the 9-arg
+  // drawImage form to downscale them to the logical export size.
+  if (rightCanvas) {
+    ctx.drawImage(rightCanvas, 0, 0, rightCanvas.width, rightCanvas.height, PAGE_WIDTH, 0, PAGE_WIDTH, PAGE_HEIGHT)
+  }
+  if (leftCanvas) {
+    ctx.drawImage(leftCanvas, 0, 0, leftCanvas.width, leftCanvas.height, 0, 0, PAGE_WIDTH, PAGE_HEIGHT)
+  }
   // Render text objects on top
   renderTextToCtx(ctx, textObjects.map(o => ({ ...o, x: o.side === 'right' ? o.x + PAGE_WIDTH : o.x })), 'right', spreadIndex)
   // Left page starts at x=0
@@ -102,7 +108,8 @@ export function exportPageAsJpg(
   const ctx = out.getContext('2d')!
   ctx.fillStyle = '#fffef8'
   ctx.fillRect(0, 0, PAGE_WIDTH, PAGE_HEIGHT)
-  ctx.drawImage(canvas, 0, 0)
+  // Source canvas is HiDPI; downscale to logical export size
+  ctx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, PAGE_WIDTH, PAGE_HEIGHT)
   const dataUrl = out.toDataURL('image/jpeg', 0.92)
   const a = document.createElement('a')
   const filename = `namenote_p${pageNumber}.jpg`

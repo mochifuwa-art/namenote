@@ -52,7 +52,10 @@ function loadCanvasFromData(canvas: HTMLCanvasElement, data: string | null): () 
   img.onload = () => {
     if (cancelled) return
     ctx.clearRect(0, 0, canvas.width, canvas.height)
-    ctx.drawImage(img, 0, 0)
+    // Explicit dest size so legacy 1x-saved images scale up cleanly into the new
+    // HiDPI backing store. New saves are already at canvas.width × canvas.height
+    // so this is a 1:1 copy for them.
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
     migrateOpaqueBackground(ctx, canvas.width, canvas.height)
   }
   img.src = data

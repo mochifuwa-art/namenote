@@ -1,4 +1,5 @@
 import { forwardRef } from 'react'
+import { CANVAS_SCALE } from '../utils/canvasScale'
 
 export const PAGE_WIDTH = 560
 export const PAGE_HEIGHT = 800
@@ -13,8 +14,8 @@ const PageCanvas = forwardRef<HTMLCanvasElement, PageCanvasProps>(({ side }, ref
   return (
     <canvas
       ref={ref}
-      width={PAGE_WIDTH}
-      height={PAGE_HEIGHT}
+      width={PAGE_WIDTH * CANVAS_SCALE}
+      height={PAGE_HEIGHT * CANVAS_SCALE}
       data-side={side}
       role="img"
       aria-label={side === 'left' ? '左ページ' : '右ページ'}
