@@ -655,8 +655,18 @@ export default function App() {
       } else {
         drawing.handlePointerMove(e)
       }
+
+      // Update custom circular cursor position and size
+      if (cursorDivRef.current && tool.type !== 'text' && (tool.type === 'pen' || tool.type === 'eraser')) {
+        const size = tool.size * notebookZoomRef.current
+        cursorDivRef.current.style.left = `${e.clientX}px`
+        cursorDivRef.current.style.top = `${e.clientY}px`
+        cursorDivRef.current.style.width = `${size}px`
+        cursorDivRef.current.style.height = `${size}px`
+        cursorDivRef.current.style.display = 'block'
+      }
     },
-    [tool.type, selection, drawing],
+    [tool.type, tool.size, selection, drawing],
   )
 
   const handlePointerUp = useCallback(
@@ -814,8 +824,10 @@ export default function App() {
   }, [pageStore, showToast])
 
   const isTextActive = tool.type === 'text'
-  const cursor = isTextActive ? 'default' : tool.type === 'eraser' ? 'cell' : 'crosshair'
+  const isDrawTool = tool.type === 'pen' || tool.type === 'eraser'
+  const cursor = isTextActive ? 'default' : isDrawTool ? 'none' : 'crosshair'
   const sidebarW = sidebarOpen ? SIDEBAR_W : 0
+  const cursorDivRef = useRef<HTMLDivElement>(null)
 
   const memoTextObjects = textObjects.filter(o => o.side === 'memo')
 
@@ -907,7 +919,24 @@ export default function App() {
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
+        onPointerLeave={() => { if (cursorDivRef.current) cursorDivRef.current.style.display = 'none' }}
         onContextMenu={e => e.preventDefault()}
+      />
+
+      {/* Custom circular cursor for pen/eraser — tracks pointer via direct DOM updates */}
+      <div
+        ref={cursorDivRef}
+        style={{
+          position: 'fixed',
+          display: 'none',
+          pointerEvents: 'none',
+          zIndex: 1000,
+          borderRadius: '50%',
+          border: `1.5px solid ${tool.type === 'eraser' ? 'rgba(200,200,200,0.85)' : tool.color}`,
+          boxShadow: '0 0 0 1px rgba(0,0,0,0.4)',
+          transform: 'translate(-50%, -50%)',
+          boxSizing: 'border-box' as const,
+        }}
       />
 
       {/* Toolbar */}
