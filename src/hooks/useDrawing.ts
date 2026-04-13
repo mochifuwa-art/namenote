@@ -114,10 +114,13 @@ class StringStabilizer {
 }
 
 function strengthToStringLength(strength: number): number {
-  // Quadratic: 0→0, 50→15, 100→60 (logical pixels). Scale by CANVAS_SCALE so
+  // Quadratic: 0→0, 50→6, 100→25 (logical pixels). Scale by CANVAS_SCALE so
   // the physical distance stays consistent after HiDPI backing-store scaling.
+  // Kept intentionally small so the string doesn't absorb slow strokes (e.g.
+  // drawing a circle in 1–2 s at 60 Hz gives only ~10 px/sample; a 60-px string
+  // would swallow all movement and produce a 10-sided polygon instead of a curve).
   const t = strength / 100
-  return t * t * 60 * CANVAS_SCALE
+  return t * t * 25 * CANVAS_SCALE
 }
 
 // ── Hook interface ────────────────────────────────────────────────────────────
@@ -174,6 +177,14 @@ export function useDrawing({
   // Avoid the degenerate first bezier segment (control point = start point → straight line).
   // Set true at stroke start; cleared after the first move event.
   const firstMoveRef = useRef(false)
+  // EMA pre-smooth filter applied to raw canvas coords before the string stabilizer.
+  // Reduces the visual impact of sparse pointer samples (e.g. iPad at 60 Hz) by
+  // blending consecutive raw positions so the midpoint-quadratic curves between them
+  // look smooth rather than polygonal.
+  // Alpha 0 = cursor frozen, 1 = no smoothing.  0.6 gives a barely-perceptible
+  // ~11 ms lag at 60 Hz but turns 10-sided polygons into smooth curves.
+  const preSmoothRef = useRef({ x: 0, y: 0 })
+  const PRE_SMOOTH_ALPHA = 0.6
 
   const applyToolToCtx = useCallback(
     (ctx: CanvasRenderingContext2D, pressure = 1.0) => {
@@ -227,6 +238,7 @@ export function useDrawing({
     wasOutsideRef.current = false
     lastPointRef.current = coords
     lastMidRef.current = coords
+    preSmoothRef.current = { ...coords }
     smoothedPressureRef.current = pressure
     lastScreenPosRef.current = { x: clientX, y: clientY }
     visitedSidesRef.current = new Set([target.side])
@@ -368,6 +380,7 @@ export function useDrawing({
           activeSide = newSide
           lastPointRef.current = entryCoords
           lastMidRef.current = entryCoords
+          preSmoothRef.current = { ...entryCoords }
 
           // 6. Continue drawing to the current event position
           const raw = toCanvasCoords(ce.clientX, ce.clientY, newRect, newCanvas)
@@ -410,10 +423,18 @@ export function useDrawing({
               : null
             lastPointRef.current = entryCoords
             lastMidRef.current = entryCoords
+            preSmoothRef.current = { ...entryCoords }
             wasOutsideRef.current = false
           }
           const raw = toCanvasCoords(ce.clientX, ce.clientY, rect, canvas)
-          const pt = stabilizerRef.current ? stabilizerRef.current.process(raw.x, raw.y) : raw
+          // EMA pre-smooth: blend raw coords toward previous smoothed position.
+          // This turns sparse pointer samples (e.g. 60 Hz on iPad) into a visually
+          // dense sequence so the midpoint-quadratic curves look smooth, not polygonal.
+          preSmoothRef.current = {
+            x: preSmoothRef.current.x * (1 - PRE_SMOOTH_ALPHA) + raw.x * PRE_SMOOTH_ALPHA,
+            y: preSmoothRef.current.y * (1 - PRE_SMOOTH_ALPHA) + raw.y * PRE_SMOOTH_ALPHA,
+          }
+          const pt = stabilizerRef.current ? stabilizerRef.current.process(preSmoothRef.current.x, preSmoothRef.current.y) : preSmoothRef.current
           if (firstMoveRef.current) {
             // Skip the degenerate opening segment (control pt = start pt → straight line).
             // Keep lastMidRef at the stroke start; the next event curves naturally from there.
