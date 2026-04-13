@@ -55,6 +55,9 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
     const smoothedPressureRef = useRef(1.0)
     const firstMoveRef = useRef(false)
     const activeCtxRef = useRef<CanvasRenderingContext2D | null>(null)
+    // EMA pre-smooth — same rationale as in useDrawing.ts
+    const preSmoothRef = useRef({ x: 0, y: 0 })
+    const PRE_SMOOTH_ALPHA = 0.6
     // Touch-scroll tracking (AUTO/PAN mode, touch only)
     const isTouchScrollingRef = useRef(false)
     const touchScrollLastYRef = useRef(0)
@@ -131,6 +134,7 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
         firstMoveRef.current = true
         lastPtRef.current = pt
         lastMidRef.current = pt
+        preSmoothRef.current = { ...pt }
         activeCtxRef.current = ctx
       },
       [canvasRef, applyTool, getCanvasCoords, tool, isTextActive, inputMode, onBeforeStroke],
@@ -149,7 +153,14 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
 
         if (!isDrawingRef.current || !activeCtxRef.current) return
 
-        const pt = getCanvasCoords(e.clientX, e.clientY)
+        const raw = getCanvasCoords(e.clientX, e.clientY)
+        // EMA pre-smooth: blend raw canvas coords to reduce visible polygon edges from
+        // sparse 60 Hz samples on iPad. Alpha 0.6 gives ~11 ms lag but smooth curves.
+        preSmoothRef.current = {
+          x: preSmoothRef.current.x * (1 - PRE_SMOOTH_ALPHA) + raw.x * PRE_SMOOTH_ALPHA,
+          y: preSmoothRef.current.y * (1 - PRE_SMOOTH_ALPHA) + raw.y * PRE_SMOOTH_ALPHA,
+        }
+        const pt = preSmoothRef.current
         const ctx = activeCtxRef.current
         const pressure = e.pointerType === 'pen' ? Math.max(0.1, e.pressure) : 1.0
         smoothedPressureRef.current =
