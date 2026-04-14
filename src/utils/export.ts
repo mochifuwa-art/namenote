@@ -1,6 +1,6 @@
 import { jsPDF } from 'jspdf'
 import { PAGE_WIDTH, PAGE_HEIGHT } from '../components/PageCanvas'
-import { saveBlobAsDownload } from './filePicker'
+import { saveWithPicker } from './filePicker'
 import type { TextObject } from '../types'
 
 // ── Text rendering ────────────────────────────────────────────────────────
@@ -49,14 +49,14 @@ function renderTextToCtx(
 
 // ── Exports ───────────────────────────────────────────────────────────────
 
-/** Export current spread as JPEG. Returns the saved filename. */
-export function exportSpreadAsJpg(
+/** Export current spread as JPEG via save picker. Returns the saved filename. */
+export async function exportSpreadAsJpg(
   leftCanvas: HTMLCanvasElement | null,
   rightCanvas: HTMLCanvasElement | null,
   rightPageNum: number,
   textObjects: TextObject[] = [],
   spreadIndex = 0,
-): string {
+): Promise<string> {
   const w = PAGE_WIDTH * 2
   const h = PAGE_HEIGHT
   const merged = document.createElement('canvas')
@@ -65,8 +65,7 @@ export function exportSpreadAsJpg(
   const ctx = merged.getContext('2d')!
   ctx.fillStyle = '#fffef8'
   ctx.fillRect(0, 0, w, h)
-  // Page canvases are in the HiDPI backing store (CANVAS_SCALE×); use the 9-arg
-  // drawImage form to downscale them to the logical export size.
+  // Page canvases are HiDPI (CANVAS_SCALE×); use 9-arg drawImage to downscale.
   if (rightCanvas) {
     ctx.drawImage(rightCanvas, 0, 0, rightCanvas.width, rightCanvas.height, PAGE_WIDTH, 0, PAGE_WIDTH, PAGE_HEIGHT)
   }
@@ -75,7 +74,6 @@ export function exportSpreadAsJpg(
   }
   // Render text objects on top
   renderTextToCtx(ctx, textObjects.map(o => ({ ...o, x: o.side === 'right' ? o.x + PAGE_WIDTH : o.x })), 'right', spreadIndex)
-  // Left page starts at x=0
   const leftCtx = (() => {
     const tmp = document.createElement('canvas')
     tmp.width = PAGE_WIDTH; tmp.height = PAGE_HEIGHT
@@ -85,22 +83,21 @@ export function exportSpreadAsJpg(
   })()
   ctx.drawImage(leftCtx.canvas, 0, 0)
 
-  const dataUrl = merged.toDataURL('image/jpeg', 0.92)
-  const a = document.createElement('a')
+  const blob = await new Promise<Blob>((resolve, reject) =>
+    merged.toBlob(b => b ? resolve(b) : reject(new Error('toBlob failed')), 'image/jpeg', 0.92)
+  )
   const filename = `namenote_p${rightPageNum}-${rightPageNum + 1}.jpg`
-  a.download = filename
-  a.href = dataUrl
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  return filename
+  const result = await saveWithPicker(blob, filename, [
+    { description: 'JPEG 画像', accept: { 'image/jpeg': ['.jpg'] } },
+  ])
+  return result.filename
 }
 
 /** Export a single page as JPEG. Returns the saved filename. */
-export function exportPageAsJpg(
+export async function exportPageAsJpg(
   canvas: HTMLCanvasElement | null,
   pageNumber: number,
-): string {
+): Promise<string> {
   if (!canvas) return ''
   const out = document.createElement('canvas')
   out.width = PAGE_WIDTH
@@ -108,58 +105,64 @@ export function exportPageAsJpg(
   const ctx = out.getContext('2d')!
   ctx.fillStyle = '#fffef8'
   ctx.fillRect(0, 0, PAGE_WIDTH, PAGE_HEIGHT)
-  // Source canvas is HiDPI; downscale to logical export size
   ctx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, PAGE_WIDTH, PAGE_HEIGHT)
-  const dataUrl = out.toDataURL('image/jpeg', 0.92)
-  const a = document.createElement('a')
+
+  const blob = await new Promise<Blob>((resolve, reject) =>
+    out.toBlob(b => b ? resolve(b) : reject(new Error('toBlob failed')), 'image/jpeg', 0.92)
+  )
   const filename = `namenote_p${pageNumber}.jpg`
-  a.download = filename
-  a.href = dataUrl
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  return filename
+  const result = await saveWithPicker(blob, filename, [
+    { description: 'JPEG 画像', accept: { 'image/jpeg': ['.jpg'] } },
+  ])
+  return result.filename
 }
 
-/** Export all spreads as a PDF. Returns the saved filename. */
-export function exportAllAsPdf(
+/**
+ * Export all spreads as a PDF, one page per canvas page (portrait A4).
+ * Page order: right page then left page for each spread (reading order for right-bound notebooks).
+ * Returns the saved filename.
+ */
+export async function exportAllAsPdf(
   totalSpreads: number,
   getSpreadData: (i: number) => { leftData: string | null; rightData: string | null },
   textObjects: TextObject[] = [],
-): string {
-  const mmW = 297
-  const mmH = 210
-  const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [mmW * 2, mmH] })
+): Promise<string> {
+  const mmW = 210  // A4 portrait width (mm)
+  const mmH = 297  // A4 portrait height (mm)
+  const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [mmW, mmH] })
+  let isFirstPage = true
+
+  const renderPage = (data: string | null, side: 'left' | 'right', spreadIndex: number) => {
+    if (!isFirstPage) pdf.addPage([mmW, mmH], 'portrait')
+    isFirstPage = false
+
+    if (data) pdf.addImage(data, 'PNG', 0, 0, mmW, mmH)
+
+    // Overlay text objects for this page
+    const pageTexts = textObjects.filter(
+      o => o.side === side && o.spread === spreadIndex && o.text.trim(),
+    )
+    if (pageTexts.length > 0) {
+      const tmp = document.createElement('canvas')
+      tmp.width = PAGE_WIDTH
+      tmp.height = PAGE_HEIGHT
+      renderTextToCtx(tmp.getContext('2d')!, pageTexts, side, spreadIndex)
+      pdf.addImage(tmp.toDataURL('image/png'), 'PNG', 0, 0, mmW, mmH)
+    }
+  }
 
   for (let i = 0; i < totalSpreads; i++) {
-    if (i > 0) pdf.addPage([mmW * 2, mmH], 'landscape')
     const { leftData, rightData } = getSpreadData(i)
-    if (leftData) pdf.addImage(leftData, 'PNG', 0, 0, mmW, mmH)
-    if (rightData) pdf.addImage(rightData, 'PNG', mmW, 0, mmW, mmH)
-
-    // Render text objects for this spread onto a temporary canvas and overlay
-    const spreadTexts = textObjects.filter(
-      o => (o.side === 'left' || o.side === 'right') && o.spread === i && o.text.trim(),
-    )
-    if (spreadTexts.length > 0) {
-      const tmp = document.createElement('canvas')
-      tmp.width = PAGE_WIDTH * 2
-      tmp.height = PAGE_HEIGHT
-      const tctx = tmp.getContext('2d')!
-      // Left page text
-      renderTextToCtx(tctx, spreadTexts, 'left', i)
-      // Right page text (offset by PAGE_WIDTH to place on combined canvas)
-      renderTextToCtx(
-        tctx,
-        spreadTexts.filter(o => o.side === 'right').map(o => ({ ...o, x: o.x + PAGE_WIDTH })),
-        'right',
-        i,
-      )
-      pdf.addImage(tmp.toDataURL('image/png'), 'PNG', 0, 0, mmW * 2, mmH)
-    }
+    // Right page first (odd pages: 1, 3, 5… in right-bound reading order)
+    renderPage(rightData, 'right', i)
+    // Left page second (even pages: 2, 4, 6…)
+    renderPage(leftData, 'left', i)
   }
 
   const filename = `namenote_${new Date().toISOString().slice(0, 10)}.pdf`
   const blob = pdf.output('blob')
-  return saveBlobAsDownload(blob, filename)
+  const result = await saveWithPicker(blob, filename, [
+    { description: 'PDF', accept: { 'application/pdf': ['.pdf'] } },
+  ])
+  return result.filename
 }
