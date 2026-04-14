@@ -245,8 +245,7 @@
 }
 
 /* ── Range sliders ────────────────────────────────────────────── */
-.size-slider,
-.stab-slider {
+.size-slider {
   -webkit-appearance: none;
   appearance: none;
   height: 3px;
@@ -255,13 +254,10 @@
   outline: none;
   cursor: pointer;
   flex-shrink: 0;
+  width: 80px;
 }
 
-.size-slider { width: 80px; }
-.stab-slider { width: 68px; }
-
-.size-slider::-webkit-slider-thumb,
-.stab-slider::-webkit-slider-thumb {
+.size-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
   width: 14px;
@@ -273,8 +269,7 @@
   cursor: pointer;
 }
 
-.size-slider::-moz-range-thumb,
-.stab-slider::-moz-range-thumb {
+.size-slider::-moz-range-thumb {
   width: 14px;
   height: 14px;
   border-radius: 50%;
@@ -294,33 +289,6 @@
   letter-spacing: 0.02em;
 }
 
-/* ── Stabilization label ──────────────────────────────────────── */
-.toolbar-group--stab { flex-shrink: 0; }
-
-.stab-label {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  cursor: default;
-  user-select: none;
-}
-
-.stab-label__text {
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.38);
-  white-space: nowrap;
-}
-
-.stab-label__val {
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  color: rgba(255, 255, 255, 0.62);
-  min-width: 22px;
-  text-align: right;
-}
 
 /* ── Font size buttons ────────────────────────────────────────── */
 .size-btn {

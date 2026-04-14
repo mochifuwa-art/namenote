@@ -134,8 +134,6 @@ interface ToolbarProps {
   onWritingModeChange: (mode: TextWritingMode) => void
   textFontSize: number
   onTextFontSizeChange: (size: number) => void
-  stabilizationStrength: number
-  onStabilizationStrengthChange: (v: number) => void
   inputMode: InputMode
   onInputModeChange: (mode: InputMode) => void
   bindingDirection: 'right' | 'left'
@@ -178,8 +176,6 @@ export default function Toolbar({
   onWritingModeChange,
   textFontSize,
   onTextFontSizeChange,
-  stabilizationStrength,
-  onStabilizationStrengthChange,
   inputMode,
   onInputModeChange,
   bindingDirection,
@@ -354,18 +350,6 @@ export default function Toolbar({
             title={`${tool.size}px`}
           />
           <span className="size-label">{tool.size}px</span>
-          <div style={{ width: 1, height: 18, background: 'rgba(255,255,255,0.08)', flexShrink: 0 }} />
-          <label className="stab-label" title="手ブレ補正（0=オフ）">
-            <span className="stab-label__text">補正</span>
-            <input
-              type="range"
-              className="stab-slider"
-              min={0} max={100} step={1}
-              value={stabilizationStrength}
-              onChange={e => onStabilizationStrengthChange(Number(e.target.value))}
-            />
-            <span className="stab-label__val">{stabilizationStrength}</span>
-          </label>
         </div>
       ) : null}
 
