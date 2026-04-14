@@ -443,7 +443,7 @@ export default function Toolbar({
               <button onClick={() => { onExportSpreadJpg(); setShowExportMenu(false) }}>このスプレッドをJPG書き出し</button>
               <button onClick={() => { onExportAllPdf(); setShowExportMenu(false) }}>全ページをPDF書き出し</button>
               <div className="export-sep" />
-              <button onClick={() => { onSaveProjectFile(); setShowExportMenu(false) }}>プロジェクト保存 (.namenote)</button>
+              <button onClick={() => { onSaveProjectFile(); setShowExportMenu(false) }}>名前を付けて保存…</button>
               <button onClick={() => { fileInputRef.current?.click(); setShowExportMenu(false) }}>プロジェクトを開く…</button>
               <div className="export-sep" />
               <button onClick={() => { pdfInputRef.current?.click(); setShowExportMenu(false) }}>PDFを読み込む…</button>

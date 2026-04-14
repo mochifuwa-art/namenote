@@ -1,4 +1,5 @@
-import { saveBlobAsDownload } from './filePicker'
+import { saveWithPicker } from './filePicker'
+import type { SaveResult } from './filePicker'
 
 const SPREAD_COUNT_KEY = 'namenote_spread_count'
 
@@ -9,8 +10,8 @@ interface ProjectData {
   [key: string]: unknown
 }
 
-/** Save the current project to a .namenote file. Returns the saved filename. */
-export async function saveProjectFile(spreadCount: number): Promise<string> {
+/** Build the project Blob from the current localStorage state. */
+export function buildProjectBlob(spreadCount: number): Blob {
   const data: ProjectData = {
     version: 1,
     createdAt: new Date().toISOString(),
@@ -22,11 +23,23 @@ export async function saveProjectFile(spreadCount: number): Promise<string> {
       data[key] = localStorage.getItem(key) ?? ''
     }
   }
+  return new Blob([JSON.stringify(data)], { type: 'application/json' })
+}
 
-  const json = JSON.stringify(data)
-  const blob = new Blob([json], { type: 'application/json' })
-  const filename = `namenote_${new Date().toISOString().slice(0, 16).replace('T', '_').replace(':', '-')}.namenote`
-  return saveBlobAsDownload(blob, filename)
+/** Generate a timestamp-based default filename. */
+export function defaultProjectFilename(): string {
+  return `namenote_${new Date().toISOString().slice(0, 16).replace('T', '_').replace(':', '-')}.namenote`
+}
+
+/**
+ * Save the current project to a .namenote file via a save picker.
+ * Returns the SaveResult so the caller can store the file handle for later overwriting.
+ */
+export async function saveProjectFile(spreadCount: number): Promise<SaveResult> {
+  const blob = buildProjectBlob(spreadCount)
+  return saveWithPicker(blob, defaultProjectFilename(), [
+    { description: 'NameNote File', accept: { 'application/json': ['.namenote'] } },
+  ])
 }
 
 /** Load a .namenote project file. Returns a map of localStorage keys → values. */

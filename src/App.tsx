@@ -6,7 +6,9 @@ import { useDrawing } from './hooks/useDrawing'
 import { useSelection } from './hooks/useSelection'
 import { useHistory } from './hooks/useHistory'
 import { exportSpreadAsJpg, exportAllAsPdf } from './utils/export'
-import { saveProjectFile, loadProjectFile } from './utils/save'
+import { buildProjectBlob, defaultProjectFilename, loadProjectFile } from './utils/save'
+import { saveWithPicker, overwriteFile } from './utils/filePicker'
+import type { SaveResult } from './utils/filePicker'
 import { importPdfPages } from './utils/pdfImport'
 import { PAGE_WIDTH, PAGE_HEIGHT } from './components/PageCanvas'
 import MemoSidebar from './components/MemoSidebar'
@@ -64,6 +66,8 @@ export default function App() {
   )
   const [inputMode, setInputMode] = useState<InputMode>('auto')
   const inputModeRef = useRef<InputMode>('auto')
+  // Currently open project file — enables overwrite on subsequent saves
+  const [currentFile, setCurrentFile] = useState<SaveResult | null>(null)
 
   // ── Text tool state ───────────────────────────────────────────
   const [textObjects, setTextObjects] = useState<TextObject[]>(() => {
@@ -684,11 +688,11 @@ export default function App() {
   )
 
   // ── Export / Save ────────────────────────────────────────────
-  const handleExportSpreadJpg = () => {
+  const handleExportSpreadJpg = async () => {
     saveNow()
     try {
       const rightPageNum = currentSpread * 2 + 1
-      const filename = exportSpreadAsJpg(
+      const filename = await exportSpreadAsJpg(
         leftCanvasRef.current,
         rightCanvasRef.current,
         rightPageNum,
@@ -697,37 +701,80 @@ export default function App() {
       )
       showToast(`書き出しました：${filename}`)
     } catch (e) {
-      showToast('書き出しに失敗しました')
+      if ((e as Error).name !== 'AbortError') showToast('書き出しに失敗しました')
       console.error(e)
     }
   }
 
-  const handleExportAllPdf = () => {
+  const handleExportAllPdf = async () => {
     saveNow()
     try {
-      const filename = exportAllAsPdf(
+      const filename = await exportAllAsPdf(
         pageStore.getSpreadCount(),
         pageStore.getSpreadData,
         textObjects,
       )
       showToast(`PDF を書き出しました：${filename}`)
     } catch (e) {
-      showToast('PDF の書き出しに失敗しました')
+      if ((e as Error).name !== 'AbortError') showToast('PDF の書き出しに失敗しました')
       console.error(e)
     }
   }
 
+  /** 保存ボタン: 既存ファイルがあれば上書き、なければ保存ピッカーを開く */
   const handleSaveButton = useCallback(async () => {
     saveNow()
     try {
-      const filename = await saveProjectFile(pageStore.getSpreadCount())
-      showToast(`保存しました：${filename}`)
+      const blob = buildProjectBlob(pageStore.getSpreadCount())
+      if (currentFile) {
+        // 上書き保存
+        await overwriteFile(blob, currentFile.filename, currentFile.handle)
+        showToast(`保存しました：${currentFile.filename}`)
+      } else {
+        // 初回保存: 保存ピッカーを表示 (Chrome/Edge は名前も設定可)
+        // iOS/その他ブラウザはファイル名を事前に入力
+        let suggestedName = defaultProjectFilename()
+        if (!('showSaveFilePicker' in window)) {
+          const input = window.prompt('ファイル名', 'namenote')
+          if (input === null) return  // キャンセル
+          const trimmed = input.trim() || 'namenote'
+          suggestedName = trimmed.endsWith('.namenote') ? trimmed : `${trimmed}.namenote`
+        }
+        const result = await saveWithPicker(blob, suggestedName, [
+          { description: 'NameNote File', accept: { 'application/json': ['.namenote'] } },
+        ])
+        setCurrentFile(result)
+        showToast(`保存しました：${result.filename}`)
+      }
     } catch (e) {
       if ((e as Error).name !== 'AbortError') showToast('保存に失敗しました')
     }
-  }, [saveNow, pageStore, showToast])
+  }, [saveNow, pageStore, showToast, currentFile])
 
-  const handleSaveProjectFile = handleSaveButton
+  /** 名前を付けて保存: 常にピッカーを表示 */
+  const handleSaveProjectAs = useCallback(async () => {
+    saveNow()
+    try {
+      const blob = buildProjectBlob(pageStore.getSpreadCount())
+      let suggestedName = currentFile?.filename ?? defaultProjectFilename()
+      if (!('showSaveFilePicker' in window)) {
+        const base = suggestedName.replace(/\.namenote$/, '')
+        const input = window.prompt('ファイル名', base)
+        if (input === null) return
+        const trimmed = input.trim() || base
+        suggestedName = trimmed.endsWith('.namenote') ? trimmed : `${trimmed}.namenote`
+      }
+      const result = await saveWithPicker(blob, suggestedName, [
+        { description: 'NameNote File', accept: { 'application/json': ['.namenote'] } },
+      ])
+      setCurrentFile(result)
+      showToast(`保存しました：${result.filename}`)
+    } catch (e) {
+      if ((e as Error).name !== 'AbortError') showToast('保存に失敗しました')
+    }
+  }, [saveNow, pageStore, showToast, currentFile])
+
+  const handleSaveProjectFile = handleSaveProjectAs
 
   const handleLoadProjectFile = async (file: File) => {
     try {
@@ -745,6 +792,8 @@ export default function App() {
       setCurrentSpread(0)
       history.clearAllHistory()
       setSaveStatus('saved')
+      // Remember the opened filename so "保存" can overwrite it
+      setCurrentFile({ filename: file.name, handle: null })
       // Reload text objects from localStorage (updated by loadAllFromProjectData)
       try {
         setTextObjects(JSON.parse(localStorage.getItem('namenote_text') ?? '[]'))
