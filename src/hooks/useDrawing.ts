@@ -74,55 +74,6 @@ function findRectEntryPoint(
   return { x: prev.x + tMin * dx, y: prev.y + tMin * dy }
 }
 
-// ── String Filter (Lazy Brush) ──────────────────────────────────────────────
-// The virtual "string" connects the raw pointer to the draw cursor.
-// The cursor only moves when the raw pointer pulls it beyond `stringLength` px.
-// This absorbs small tremors with minimal latency: large intentional movements
-// respond immediately, only the leading edge of the string adds lag.
-//
-// strength (0–100) → stringLength (0–60 canvas-px, quadratic for natural feel)
-class StringStabilizer {
-  private ox: number
-  private oy: number
-  private readonly len: number   // string length in canvas pixels
-
-  constructor(startX: number, startY: number, stringLength: number) {
-    this.ox = startX
-    this.oy = startY
-    this.len = stringLength
-  }
-
-  process(x: number, y: number): { x: number; y: number } {
-    if (this.len === 0) return { x, y }
-    const dx = x - this.ox
-    const dy = y - this.oy
-    const dist = Math.sqrt(dx * dx + dy * dy)
-    if (dist > this.len) {
-      const ratio = (dist - this.len) / dist
-      this.ox += dx * ratio
-      this.oy += dy * ratio
-    }
-    return { x: this.ox, y: this.oy }
-  }
-
-  // Snap cursor to raw pointer on pen-up so endpoints are accurate
-  finish(x: number, y: number): { x: number; y: number } {
-    this.ox = x
-    this.oy = y
-    return { x, y }
-  }
-}
-
-function strengthToStringLength(strength: number): number {
-  // Quadratic: 0→0, 50→6, 100→25 (logical pixels). Scale by CANVAS_SCALE so
-  // the physical distance stays consistent after HiDPI backing-store scaling.
-  // Kept intentionally small so the string doesn't absorb slow strokes (e.g.
-  // drawing a circle in 1–2 s at 60 Hz gives only ~10 px/sample; a 60-px string
-  // would swallow all movement and produce a 10-sided polygon instead of a curve).
-  const t = strength / 100
-  return t * t * 25 * CANVAS_SCALE
-}
-
 // ── Hook interface ────────────────────────────────────────────────────────────
 
 interface UseDrawingOptions {
@@ -134,7 +85,6 @@ interface UseDrawingOptions {
   onStrokeEnd: (target: DrawTarget) => void
   onCancelStroke?: () => void
   enabled: boolean  // false when lasso tool is active
-  stabilizationStrength: number  // 0 = off, 1–100 = string length
 }
 
 export function useDrawing({
@@ -146,7 +96,6 @@ export function useDrawing({
   onStrokeEnd,
   onCancelStroke,
   enabled,
-  stabilizationStrength,
 }: UseDrawingOptions) {
   const isDrawingRef = useRef(false)
   // Set to true when pointerdown happened outside a canvas (pointer held but not yet drawing).
@@ -166,7 +115,6 @@ export function useDrawing({
   const activeCtxRef = useRef<CanvasRenderingContext2D | null>(null)
   const activeRectRef = useRef<DOMRect | null>(null)
   const activeCanvasRef = useRef<HTMLCanvasElement | null>(null)
-  const stabilizerRef = useRef<StringStabilizer | null>(null)
   // true while the pointer is outside the active canvas during an ongoing stroke.
   // Used to clip at the exit edge and re-enter cleanly without a connecting line.
   const wasOutsideRef = useRef(false)
@@ -230,9 +178,6 @@ export function useDrawing({
     ctx.globalCompositeOperation = tool.type === 'eraser' ? 'destination-out' : 'source-over'
     ctx.fill()
 
-    const strLen = strengthToStringLength(stabilizationStrength)
-    stabilizerRef.current = strLen > 0 ? new StringStabilizer(coords.x, coords.y, strLen) : null
-
     isDrawingRef.current = true
     pendingPointerRef.current = false
     wasOutsideRef.current = false
@@ -249,7 +194,7 @@ export function useDrawing({
 
     firstMoveRef.current = true
     overlayRef.current?.setPointerCapture(pointerId)
-  }, [leftCanvasRef, rightCanvasRef, overlayRef, onBeforeStroke, applyToolToCtx, tool, stabilizationStrength])
+  }, [leftCanvasRef, rightCanvasRef, overlayRef, onBeforeStroke, applyToolToCtx, tool])
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
@@ -307,8 +252,12 @@ export function useDrawing({
       const leftRect = leftCanvasRef.current?.getBoundingClientRect() ?? null
       const rightRect = rightCanvasRef.current?.getBoundingClientRect() ?? null
 
-      // Use coalesced events for smoother high-frequency input (pen tablets 200Hz+)
-      const events = e.nativeEvent.getCoalescedEvents?.() ?? [e.nativeEvent]
+      // Use coalesced events for smoother high-frequency input (pen tablets 200Hz+).
+      // Cap at 32 events per frame: on old iPads a long freeze can queue 100+ events;
+      // processing them all in one JS tick keeps the thread busy and causes another freeze.
+      // Dropping excess events is imperceptible — the EMA pre-smooth fills in the path.
+      const allEvents = e.nativeEvent.getCoalescedEvents?.() ?? [e.nativeEvent]
+      const events = allEvents.length > 32 ? allEvents.slice(-32) : allEvents
 
       // Local mutable state — updated on page transitions, committed to refs after the loop
       let ctx = activeCtxRef.current
@@ -317,16 +266,35 @@ export function useDrawing({
       // Always use the freshly-measured rect to stay correct after pinch-zoom
       let rect = (activeSide === 'left' ? leftRect : rightRect) ?? activeRectRef.current!
 
+      // ── Batched path building ──────────────────────────────────────────────
+      // Instead of beginPath/stroke per bezier segment (expensive GPU round-trips),
+      // accumulate all same-canvas segments into a single path and stroke once.
+      // Flush the batch whenever we switch canvases or need a separate stroke call.
+      let batchHasSegments = false
+
+      const flushBatch = () => {
+        if (batchHasSegments) {
+          applyToolToCtx(ctx, smoothedPressureRef.current)
+          ctx.stroke()
+          batchHasSegments = false
+        }
+      }
+
+      // Open the initial path for same-canvas segments
+      ctx.beginPath()
+      ctx.moveTo(lastMidRef.current.x, lastMidRef.current.y)
+
       for (const ce of events) {
         const currScreen = { x: ce.clientX, y: ce.clientY }
         const ceTarget = getDrawTarget(ce.clientX, ce.clientY, leftRect, rightRect)
         // Per-event pressure with exponential smoothing for gradual width transitions
         const rawPressure = ce.pointerType === 'pen' ? Math.max(0.1, ce.pressure) : 1.0
         smoothedPressureRef.current = smoothedPressureRef.current * (1 - PRESSURE_ALPHA) + rawPressure * PRESSURE_ALPHA
-        applyToolToCtx(ctx, smoothedPressureRef.current)
 
         if (ceTarget && ceTarget.kind === 'page' && ceTarget.side !== activeSide) {
           // ── Cross-page transition ──────────────────────────────────────
+          flushBatch()
+
           const newSide = ceTarget.side
           const newCanvas = newSide === 'left' ? leftCanvasRef.current : rightCanvasRef.current
           const newRect   = newSide === 'left' ? leftRect : rightRect
@@ -335,16 +303,14 @@ export function useDrawing({
             continue
           }
 
-          // 1. Draw to the exit edge of the current canvas (skip if already drawn by wasOutside)
+          // 1. Draw to the exit edge of the current canvas (skip if already clipped by wasOutside)
           if (!wasOutsideRef.current) {
             const exitScreen = findRectEntryPoint(lastScreenPosRef.current, currScreen, rect)
             const exitCoords = toCanvasCoords(exitScreen.x, exitScreen.y, rect, canvas)
-            const exitPt = stabilizerRef.current
-              ? stabilizerRef.current.process(exitCoords.x, exitCoords.y)
-              : exitCoords
+            applyToolToCtx(ctx, smoothedPressureRef.current)
             ctx.beginPath()
             ctx.moveTo(lastMidRef.current.x, lastMidRef.current.y)
-            ctx.quadraticCurveTo(lastPointRef.current.x, lastPointRef.current.y, exitPt.x, exitPt.y)
+            ctx.quadraticCurveTo(lastPointRef.current.x, lastPointRef.current.y, exitCoords.x, exitCoords.y)
             ctx.stroke()
           }
 
@@ -358,13 +324,7 @@ export function useDrawing({
           const entryScreen = findRectEntryPoint(lastScreenPosRef.current, currScreen, newRect)
           const entryCoords = toCanvasCoords(entryScreen.x, entryScreen.y, newRect, newCanvas)
 
-          // 4. Reset stabilizer anchored at the entry point (canvas coords changed)
-          const strLen = strengthToStringLength(stabilizationStrength)
-          stabilizerRef.current = strLen > 0
-            ? new StringStabilizer(entryCoords.x, entryCoords.y, strLen)
-            : null
-
-          // 5. Switch active canvas and draw initial dot at entry
+          // 4. Switch active canvas and draw initial dot at entry
           const newCtx = newCanvas.getContext('2d', { desynchronized: true })
           if (!newCtx) continue
           applyToolToCtx(newCtx, smoothedPressureRef.current)
@@ -382,70 +342,68 @@ export function useDrawing({
           lastMidRef.current = entryCoords
           preSmoothRef.current = { ...entryCoords }
 
-          // 6. Continue drawing to the current event position
+          // 5. Continue drawing to the current event position (start new batch on new canvas)
           const raw = toCanvasCoords(ce.clientX, ce.clientY, newRect, newCanvas)
-          const pt = stabilizerRef.current ? stabilizerRef.current.process(raw.x, raw.y) : raw
-          const continueMid = { x: (lastPointRef.current.x + pt.x) / 2, y: (lastPointRef.current.y + pt.y) / 2 }
-          newCtx.beginPath()
-          newCtx.moveTo(lastMidRef.current.x, lastMidRef.current.y)
-          newCtx.quadraticCurveTo(lastPointRef.current.x, lastPointRef.current.y, continueMid.x, continueMid.y)
-          newCtx.stroke()
-          lastPointRef.current = pt
+          preSmoothRef.current = {
+            x: preSmoothRef.current.x * (1 - PRE_SMOOTH_ALPHA) + raw.x * PRE_SMOOTH_ALPHA,
+            y: preSmoothRef.current.y * (1 - PRE_SMOOTH_ALPHA) + raw.y * PRE_SMOOTH_ALPHA,
+          }
+          const continueMid = { x: (lastPointRef.current.x + preSmoothRef.current.x) / 2, y: (lastPointRef.current.y + preSmoothRef.current.y) / 2 }
+          ctx.beginPath()
+          ctx.moveTo(lastMidRef.current.x, lastMidRef.current.y)
+          ctx.quadraticCurveTo(lastPointRef.current.x, lastPointRef.current.y, continueMid.x, continueMid.y)
+          batchHasSegments = true
+          lastPointRef.current = preSmoothRef.current
           lastMidRef.current = continueMid
           wasOutsideRef.current = false
 
         } else if (!ceTarget || ceTarget.kind !== 'page') {
           // ── Pointer left the active canvas — clip at exit edge on first departure ──
           if (!wasOutsideRef.current) {
+            flushBatch()
             const exitScreen = findRectEntryPoint(lastScreenPosRef.current, currScreen, rect)
             const exitCoords = toCanvasCoords(exitScreen.x, exitScreen.y, rect, canvas)
-            const exitPt = stabilizerRef.current
-              ? stabilizerRef.current.process(exitCoords.x, exitCoords.y)
-              : exitCoords
+            applyToolToCtx(ctx, smoothedPressureRef.current)
             ctx.beginPath()
             ctx.moveTo(lastMidRef.current.x, lastMidRef.current.y)
-            ctx.quadraticCurveTo(lastPointRef.current.x, lastPointRef.current.y, exitPt.x, exitPt.y)
+            ctx.quadraticCurveTo(lastPointRef.current.x, lastPointRef.current.y, exitCoords.x, exitCoords.y)
             ctx.stroke()
-            lastPointRef.current = exitPt
-            lastMidRef.current = exitPt
+            lastPointRef.current = exitCoords
+            lastMidRef.current = exitCoords
             wasOutsideRef.current = true
           }
 
         } else {
-          // ── Same canvas as before — normal drawing ─────────────────────
+          // ── Same canvas as before — normal drawing (batched) ───────────
           if (wasOutsideRef.current) {
-            // Re-entering the same canvas: jump to the exact entry edge, no connecting line
+            // Re-entering the same canvas: reset path from new entry edge
+            flushBatch()
             const entryScreen = findRectEntryPoint(lastScreenPosRef.current, currScreen, rect)
             const entryCoords = toCanvasCoords(entryScreen.x, entryScreen.y, rect, canvas)
-            const strLen = strengthToStringLength(stabilizationStrength)
-            stabilizerRef.current = strLen > 0
-              ? new StringStabilizer(entryCoords.x, entryCoords.y, strLen)
-              : null
             lastPointRef.current = entryCoords
             lastMidRef.current = entryCoords
             preSmoothRef.current = { ...entryCoords }
             wasOutsideRef.current = false
+            ctx.beginPath()
+            ctx.moveTo(lastMidRef.current.x, lastMidRef.current.y)
           }
           const raw = toCanvasCoords(ce.clientX, ce.clientY, rect, canvas)
           // EMA pre-smooth: blend raw coords toward previous smoothed position.
-          // This turns sparse pointer samples (e.g. 60 Hz on iPad) into a visually
-          // dense sequence so the midpoint-quadratic curves look smooth, not polygonal.
+          // Turns sparse 60 Hz iPad samples into smooth curves (not polygons).
           preSmoothRef.current = {
             x: preSmoothRef.current.x * (1 - PRE_SMOOTH_ALPHA) + raw.x * PRE_SMOOTH_ALPHA,
             y: preSmoothRef.current.y * (1 - PRE_SMOOTH_ALPHA) + raw.y * PRE_SMOOTH_ALPHA,
           }
-          const pt = stabilizerRef.current ? stabilizerRef.current.process(preSmoothRef.current.x, preSmoothRef.current.y) : preSmoothRef.current
+          const pt = preSmoothRef.current
           if (firstMoveRef.current) {
             // Skip the degenerate opening segment (control pt = start pt → straight line).
-            // Keep lastMidRef at the stroke start; the next event curves naturally from there.
             firstMoveRef.current = false
             lastPointRef.current = pt
           } else {
             const mid = { x: (lastPointRef.current.x + pt.x) / 2, y: (lastPointRef.current.y + pt.y) / 2 }
-            ctx.beginPath()
-            ctx.moveTo(lastMidRef.current.x, lastMidRef.current.y)
+            // Accumulate into the open batch path — no stroke() here
             ctx.quadraticCurveTo(lastPointRef.current.x, lastPointRef.current.y, mid.x, mid.y)
-            ctx.stroke()
+            batchHasSegments = true
             lastPointRef.current = pt
             lastMidRef.current = mid
           }
@@ -454,6 +412,8 @@ export function useDrawing({
         lastScreenPosRef.current = currScreen
       }
 
+      // Flush any remaining batch segments with a single stroke call
+      flushBatch()
 
       // Commit local canvas state back to refs for the next move/up event
       activeCtxRef.current = ctx
@@ -461,7 +421,7 @@ export function useDrawing({
       activeRectRef.current = rect
       activeTargetRef.current = { kind: 'page', side: activeSide }
     },
-    [applyToolToCtx, leftCanvasRef, rightCanvasRef, onBeforeStroke, tool, stabilizationStrength]
+    [applyToolToCtx, leftCanvasRef, rightCanvasRef, onBeforeStroke, tool]
   )
 
   const handlePointerUp = useCallback(
@@ -472,8 +432,7 @@ export function useDrawing({
       // Draw final segment from the last midpoint to the exact pointer position
       // (skip if pointer ended outside the canvas — nothing to snap to)
       if (!firstMoveRef.current && activeCtxRef.current && activeRectRef.current && activeCanvasRef.current && !wasOutsideRef.current) {
-        const raw = toCanvasCoords(e.clientX, e.clientY, activeRectRef.current, activeCanvasRef.current)
-        const final = stabilizerRef.current ? stabilizerRef.current.finish(raw.x, raw.y) : raw
+        const final = toCanvasCoords(e.clientX, e.clientY, activeRectRef.current, activeCanvasRef.current)
         const ctx = activeCtxRef.current
         // Use final pen pressure (smoothed) so lifting gently produces a thin endpoint
         const rawPressure = getPressure(e)
@@ -484,7 +443,6 @@ export function useDrawing({
         ctx.quadraticCurveTo(lastPointRef.current.x, lastPointRef.current.y, final.x, final.y)
         ctx.stroke()
       }
-      stabilizerRef.current = null
 
       isDrawingRef.current = false
       if (activeTargetRef.current) onStrokeEnd(activeTargetRef.current)
@@ -505,7 +463,6 @@ export function useDrawing({
     firstMoveRef.current = false
     if (!isDrawingRef.current) return
     isDrawingRef.current = false
-    stabilizerRef.current = null
     activeCtxRef.current = null
     activeTargetRef.current = null
     activeRectRef.current = null

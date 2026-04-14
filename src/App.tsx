@@ -62,7 +62,6 @@ export default function App() {
   const [bindingDirection, setBindingDirection] = useState<'right' | 'left'>(
     () => (localStorage.getItem('namenote_binding') as 'right' | 'left') ?? 'right',
   )
-  const [stabilizationStrength, setStabilizationStrength] = useState(30)
   const [inputMode, setInputMode] = useState<InputMode>('auto')
   const inputModeRef = useRef<InputMode>('auto')
 
@@ -205,7 +204,6 @@ export default function App() {
     onStrokeEnd: markUnsaved,
     onCancelStroke: history.undo,
     enabled: tool.type !== 'lasso' && tool.type !== 'text',
-    stabilizationStrength,
   })
   // Keep cancelStrokeRef in sync so the global capture handler can call it
   useEffect(() => { cancelStrokeRef.current = drawing.cancelStroke }, [drawing.cancelStroke])
@@ -976,8 +974,6 @@ export default function App() {
         onWritingModeChange={setWritingMode}
         textFontSize={textFontSize}
         onTextFontSizeChange={setTextFontSize}
-        stabilizationStrength={stabilizationStrength}
-        onStabilizationStrengthChange={setStabilizationStrength}
         inputMode={inputMode}
         onInputModeChange={setInputMode}
         bindingDirection={bindingDirection}
