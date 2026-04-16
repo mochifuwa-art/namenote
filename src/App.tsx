@@ -541,6 +541,49 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [saveNow, history, markUnsaved])
 
+  // ── 2本指タップ → Undo、3本指タップ → Redo ───────────────────
+  // Apple Pencil はポインタイベント扱い。タッチイベントで指のみを検出。
+  // 動作: 全指が下りて・動かず・400ms以内に離れた = タップとみなす。
+  useEffect(() => {
+    let tapMaxCount = 0   // このジェスチャーで同時に触れた最大指数
+    let tapStartTime = 0
+    let moved = false     // touchmove が発生したら true
+
+    const onStart = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        // 新しいジェスチャー開始
+        tapMaxCount = 1
+        tapStartTime = Date.now()
+        moved = false
+      } else {
+        tapMaxCount = Math.max(tapMaxCount, e.touches.length)
+      }
+    }
+
+    const onMove = () => { moved = true }
+
+    const onEnd = (e: TouchEvent) => {
+      if (e.touches.length !== 0) return  // まだ画面に指がある
+      const dt = Date.now() - tapStartTime
+      if (!moved && dt < 400 && tapMaxCount >= 2) {
+        if (tapMaxCount === 2) { history.undo(); markUnsaved() }
+        else if (tapMaxCount === 3) { history.redo(); markUnsaved() }
+      }
+      tapMaxCount = 0
+    }
+
+    window.addEventListener('touchstart', onStart, { passive: true })
+    window.addEventListener('touchmove', onMove, { passive: true })
+    window.addEventListener('touchend', onEnd, { passive: true })
+    window.addEventListener('touchcancel', onEnd, { passive: true })
+    return () => {
+      window.removeEventListener('touchstart', onStart)
+      window.removeEventListener('touchmove', onMove)
+      window.removeEventListener('touchend', onEnd)
+      window.removeEventListener('touchcancel', onEnd)
+    }
+  }, [history, markUnsaved])
+
   // ── Global pinch-to-zoom (capture phase — fires before any element handler) ──
   // Track ALL pointers across the full screen so pinch works wherever the fingers land.
   useEffect(() => { notebookZoomRef.current = notebookZoom }, [notebookZoom])
