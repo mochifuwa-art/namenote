@@ -123,3 +123,29 @@
   border-left: 1px solid rgba(0, 0, 0, 0.10);
   border-radius: 7px;
 }
+
+/* Right-side variant */
+.memo-sidebar--right {
+  left: auto;
+  right: 0;
+}
+
+.memo-sidebar--right .memo-sidebar__panel {
+  border-right: none;
+  border-left: 1px solid rgba(0, 0, 0, 0.10);
+  box-shadow: -2px 0 12px rgba(0, 0, 0, 0.12);
+}
+
+.memo-sidebar--right .memo-sidebar__toggle {
+  right: auto;
+  left: -26px;
+  border-left: 1px solid rgba(0, 0, 0, 0.10);
+  border-right: none;
+  border-radius: 7px 0 0 7px;
+}
+
+.memo-sidebar--right .memo-sidebar__toggle--collapsed {
+  left: -26px;
+  border-right: 1px solid rgba(0, 0, 0, 0.10);
+  border-radius: 7px;
+}

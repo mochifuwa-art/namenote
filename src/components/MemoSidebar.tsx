@@ -25,6 +25,7 @@ interface MemoSidebarProps {
   onEditRequest: (id: string, screenX: number, screenY: number) => void
   onBeginCrossAreaDrag?: (obj: TextObject, pointerId: number, clientX: number, clientY: number, grabOffsetX: number, grabOffsetY: number) => void
   onBeforeStroke?: (target: DrawTarget) => void
+  position?: 'left' | 'right'
 }
 
 const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
@@ -45,6 +46,7 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
       onEditRequest,
       onBeginCrossAreaDrag,
       onBeforeStroke,
+      position = 'left',
     },
     canvasRef,
   ) => {
@@ -217,7 +219,7 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
     )
 
     return (
-      <div className="memo-sidebar">
+      <div className={`memo-sidebar${position === 'right' ? ' memo-sidebar--right' : ''}`}>
         <div
           className={`memo-sidebar__panel${open ? '' : ' memo-sidebar__panel--collapsed'}`}
         >
@@ -257,7 +259,7 @@ const MemoSidebar = forwardRef<HTMLCanvasElement, MemoSidebarProps>(
           onClick={onToggle}
           title={open ? 'メモを閉じる' : 'メモを開く'}
         >
-          {open ? '◀' : '▶'}
+          {position === 'right' ? (open ? '▶' : '◀') : (open ? '◀' : '▶')}
         </button>
       </div>
     )
