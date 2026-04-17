@@ -253,6 +253,11 @@ export default function App() {
     computeNotebookScale(sidebarOpen)
   }, [sidebarOpen, computeNotebookScale])
 
+  useEffect(() => {
+    const leftOffset = (sidebarOpen && memoPosition === 'left') ? SIDEBAR_W : 0
+    document.documentElement.style.setProperty('--memo-left-offset', `${leftOffset}px`)
+  }, [sidebarOpen, memoPosition])
+
   // ── Page navigation ──────────────────────────────────────────
   useEffect(() => { localStorage.setItem('namenote_binding', bindingDirection) }, [bindingDirection])
   useEffect(() => { localStorage.setItem('namenote_memo_position', memoPosition) }, [memoPosition])
