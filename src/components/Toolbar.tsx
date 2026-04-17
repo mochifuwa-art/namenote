@@ -138,6 +138,8 @@ interface ToolbarProps {
   onInputModeChange: (mode: InputMode) => void
   bindingDirection: 'right' | 'left'
   onToggleBinding: () => void
+  memoPosition: 'left' | 'right'
+  onToggleMemoPosition: () => void
 }
 
 export default function Toolbar({
@@ -180,6 +182,8 @@ export default function Toolbar({
   onInputModeChange,
   bindingDirection,
   onToggleBinding,
+  memoPosition,
+  onToggleMemoPosition,
 }: ToolbarProps) {
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [showColorPicker, setShowColorPicker] = useState(false)
@@ -450,6 +454,9 @@ export default function Toolbar({
               <div className="export-sep" />
               <button onClick={() => { onToggleBinding(); setShowExportMenu(false) }}>
                 {bindingDirection === 'right' ? '左綴じに切り替え' : '右綴じに切り替え'}
+              </button>
+              <button onClick={() => { onToggleMemoPosition(); setShowExportMenu(false) }}>
+                {memoPosition === 'left' ? 'メモを右に移動' : 'メモを左に移動'}
               </button>
               <div className="export-sep" />
               <button

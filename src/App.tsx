@@ -55,6 +55,9 @@ export default function App() {
   const [isPasting, setIsPasting] = useState(false)
   const [showOverview, setShowOverview] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [memoPosition, setMemoPosition] = useState<'left' | 'right'>(
+    () => (localStorage.getItem('namenote_memo_position') as 'left' | 'right') ?? 'left',
+  )
   const [notebookZoom, setNotebookZoom] = useState(1)
   const [notebookPan, setNotebookPan] = useState({ x: 0, y: 0 })
   const [totalSpreads, setTotalSpreads] = useState(() =>
@@ -105,6 +108,7 @@ export default function App() {
   const notebookPanRef = useRef({ x: 0, y: 0 })
   const sidebarWRef = useRef(0)
   const sidebarOpenRef = useRef(sidebarOpen)
+  const memoPositionRef = useRef(memoPosition)
 
   // Single-pointer pan tracking
   const isPanningRef = useRef(false)
@@ -251,6 +255,7 @@ export default function App() {
 
   // ── Page navigation ──────────────────────────────────────────
   useEffect(() => { localStorage.setItem('namenote_binding', bindingDirection) }, [bindingDirection])
+  useEffect(() => { localStorage.setItem('namenote_memo_position', memoPosition) }, [memoPosition])
 
   // Helper: which canvas side is read first vs second in the current binding direction
   const firstSide = bindingDirection === 'right' ? 'R' : 'L'  // first page of each spread
@@ -536,19 +541,66 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [saveNow, history, markUnsaved])
 
+  // ── 2本指タップ → Undo、3本指タップ → Redo ───────────────────
+  // Apple Pencil はポインタイベント扱い。タッチイベントで指のみを検出。
+  // 動作: 全指が下りて・動かず・400ms以内に離れた = タップとみなす。
+  useEffect(() => {
+    let tapMaxCount = 0   // このジェスチャーで同時に触れた最大指数
+    let tapStartTime = 0
+    let moved = false     // touchmove が発生したら true
+
+    const onStart = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        // 新しいジェスチャー開始
+        tapMaxCount = 1
+        tapStartTime = Date.now()
+        moved = false
+      } else {
+        tapMaxCount = Math.max(tapMaxCount, e.touches.length)
+      }
+    }
+
+    const onMove = () => { moved = true }
+
+    const onEnd = (e: TouchEvent) => {
+      if (e.touches.length !== 0) return  // まだ画面に指がある
+      const dt = Date.now() - tapStartTime
+      if (!moved && dt < 400 && tapMaxCount >= 2) {
+        if (tapMaxCount === 2) { history.undo(); markUnsaved() }
+        else if (tapMaxCount === 3) { history.redo(); markUnsaved() }
+      }
+      tapMaxCount = 0
+    }
+
+    window.addEventListener('touchstart', onStart, { passive: true })
+    window.addEventListener('touchmove', onMove, { passive: true })
+    window.addEventListener('touchend', onEnd, { passive: true })
+    window.addEventListener('touchcancel', onEnd, { passive: true })
+    return () => {
+      window.removeEventListener('touchstart', onStart)
+      window.removeEventListener('touchmove', onMove)
+      window.removeEventListener('touchend', onEnd)
+      window.removeEventListener('touchcancel', onEnd)
+    }
+  }, [history, markUnsaved])
+
   // ── Global pinch-to-zoom (capture phase — fires before any element handler) ──
   // Track ALL pointers across the full screen so pinch works wherever the fingers land.
   useEffect(() => { notebookZoomRef.current = notebookZoom }, [notebookZoom])
   useEffect(() => { notebookPanRef.current = notebookPan }, [notebookPan])
   useEffect(() => { sidebarWRef.current = sidebarOpen ? SIDEBAR_W : 0 }, [sidebarOpen])
   useEffect(() => { sidebarOpenRef.current = sidebarOpen }, [sidebarOpen])
+  useEffect(() => { memoPositionRef.current = memoPosition }, [memoPosition])
   useEffect(() => { inputModeRef.current = inputMode }, [inputMode])
 
   useEffect(() => {
     const onDown = (e: PointerEvent) => {
       if (e.pointerType !== 'touch') return  // ignore synthetic mouse events from Android Chrome
       // Touches starting in the sidebar area are handled by the sidebar, not notebook pinch
-      if (sidebarOpenRef.current && e.clientX < sidebarWRef.current) return
+      if (sidebarOpenRef.current) {
+        if (memoPositionRef.current === 'left' && e.clientX < sidebarWRef.current) return
+        if (memoPositionRef.current === 'right' && e.clientX > window.innerWidth - sidebarWRef.current) return
+      }
       activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
       if (activePointersRef.current.size === 2) {
         // Cancel any in-progress drawing or single-finger pan before entering gesture mode
@@ -584,7 +636,8 @@ export default function App() {
         //   newPan.x s.t. screen_x of ex = cmx:
         //     newPan.x = (cmx - A) + ratio * (A - imx + initPan.x)
         const sw = sidebarWRef.current
-        const A = sw + (window.innerWidth - sw) / 2   // notebook center X on screen
+        const leftOffset = memoPositionRef.current === 'left' ? sw : 0
+        const A = leftOffset + (window.innerWidth - sw) / 2   // notebook center X on screen
         const B = window.innerHeight / 2              // notebook center Y on screen
         const cmx = (pts[0].x + pts[1].x) / 2        // current midpoint
         const cmy = (pts[0].y + pts[1].y) / 2
@@ -898,6 +951,7 @@ export default function App() {
         onEditRequest={openTextEditor}
         onBeginCrossAreaDrag={handleBeginCrossAreaDrag}
         onBeforeStroke={history.push}
+        position={memoPosition}
       />
 
       {/* Notebook spread */}
@@ -905,7 +959,8 @@ export default function App() {
         style={{
           position: 'fixed',
           inset: 0,
-          left: sidebarW,
+          left: memoPosition === 'left' ? sidebarW : 0,
+          right: memoPosition === 'right' ? sidebarW : 0,
           pointerEvents: 'none',
           zIndex: 1,
           transformOrigin: 'center center',
@@ -954,8 +1009,8 @@ export default function App() {
         style={{
           position: 'fixed',
           top: 0,
-          left: tool.type === 'lasso' ? 0 : sidebarW,
-          right: 0,
+          left: memoPosition === 'left' ? (tool.type === 'lasso' ? 0 : sidebarW) : 0,
+          right: memoPosition === 'right' ? (tool.type === 'lasso' ? 0 : sidebarW) : 0,
           bottom: tool.type === 'lasso' ? '64px' : 0,
           zIndex: tool.type === 'lasso' ? 202 : 100,
           cursor,
@@ -1027,6 +1082,8 @@ export default function App() {
         onInputModeChange={setInputMode}
         bindingDirection={bindingDirection}
         onToggleBinding={handleToggleBinding}
+        memoPosition={memoPosition}
+        onToggleMemoPosition={() => setMemoPosition(p => p === 'left' ? 'right' : 'left')}
       />
 
       {/* Page overview panel */}
